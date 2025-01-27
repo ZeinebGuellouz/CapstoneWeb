@@ -5,16 +5,18 @@ from typing import List
 from fastapi.staticfiles import StaticFiles
 from pptx import Presentation
 from pdf2image import convert_from_path
+import pdfplumber
 import shutil
 import os
 import pythoncom
 import comtypes.client
+from fastapi.responses import FileResponse
 
 app = FastAPI()
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173"],
+    allow_origins=["http://localhost:5173"],  # Change if needed
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -26,8 +28,15 @@ UPLOAD_DIR.mkdir(exist_ok=True)
 SLIDE_DIR.mkdir(exist_ok=True)
 
 
+def clear_slide_directory():
+    """Clears the slide directory before processing a new file."""
+    for file in SLIDE_DIR.iterdir():
+        if file.is_file():
+            file.unlink()
+
+
 def process_pptx(file_path: Path) -> List[str]:
-    """Extract slides from a .pptx file using PowerPoint COM."""
+    """Extract slide images from a .pptx file."""
     pythoncom.CoInitialize()  # Initialize COM
     pptx_file = os.path.abspath(file_path)
     output_folder = os.path.abspath(SLIDE_DIR)
@@ -51,6 +60,19 @@ def process_pptx(file_path: Path) -> List[str]:
         return []
 
 
+def extract_text_from_pptx(file_path: Path) -> List[str]:
+    """Extract text from each slide in a .pptx file."""
+    prs = Presentation(file_path)
+    slide_texts = []
+    for slide in prs.slides:
+        text = []
+        for shape in slide.shapes:
+            if shape.has_text_frame:
+                text.append(shape.text)
+        slide_texts.append("\n".join(text))
+    return slide_texts
+
+
 def process_pdf(file_path: Path) -> List[str]:
     """Convert PDF pages to images."""
     pdf_file = os.path.abspath(file_path)
@@ -59,10 +81,19 @@ def process_pdf(file_path: Path) -> List[str]:
 
     try:
         slides = convert_from_path(pdf_file, dpi=150, output_folder=output_folder, fmt="png")
-        return [f"/uploads/slides/{slide.filename}" for slide in slides]
+        return [f"/uploads/slides/{Path(slide.filename).name}" for slide in slides]
     except Exception as e:
         print(f"Error processing PDF: {e}")
         return []
+
+
+def extract_text_from_pdf(file_path: Path) -> List[str]:
+    """Extract text from each page in a PDF."""
+    slide_texts = []
+    with pdfplumber.open(file_path) as pdf:
+        for page in pdf.pages:
+            slide_texts.append(page.extract_text() or "")
+    return slide_texts
 
 
 @app.post("/upload/")
@@ -71,15 +102,34 @@ async def upload_file(file: UploadFile = File(...)):
     with file_path.open("wb") as buffer:
         shutil.copyfileobj(file.file, buffer)
 
+    # Clear the slides directory before processing a new file
+    clear_slide_directory()
+
     slide_images = []
+    slide_texts = []
     if file.filename.endswith(".pptx"):
         slide_images = process_pptx(file_path)
+        slide_texts = extract_text_from_pptx(file_path)
     elif file.filename.endswith(".pdf"):
         slide_images = process_pdf(file_path)
+        slide_texts = extract_text_from_pdf(file_path)
     else:
         return {"error": "Unsupported file format. Please upload a .pptx or .pdf file."}
 
-    return {"filename": file.filename, "slides": [f"http://127.0.0.1:8000{path}" for path in slide_images]}
+    return {
+        "filename": file.filename,
+        "slides": [
+            {"image": f"http://127.0.0.1:8000{path}", "text": text}
+            for path, text in zip(slide_images, slide_texts)
+        ],
+    }
+
+
+@app.get("/uploads/slides/{filename}")
+async def get_slide(filename: str):
+    """Serve slide images with no caching."""
+    file_path = SLIDE_DIR / filename
+    return FileResponse(file_path, headers={"Cache-Control": "no-cache, no-store, must-revalidate"})
 
 
 @app.get("/")

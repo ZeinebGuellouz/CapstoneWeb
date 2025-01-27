@@ -13,6 +13,7 @@
     "@react-pdf-viewer/core": "^3.12.0",
     "@react-pdf-viewer/full-screen": "^3.12.0",
     "axios": "^1.7.9",
+    "franc-min": "^6.2.0",
     "lucide-react": "^0.344.0",
     "pptxgenjs": "^3.12.0",
     "react": "^18.3.1",

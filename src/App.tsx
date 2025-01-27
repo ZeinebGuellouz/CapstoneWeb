@@ -58,7 +58,7 @@ function App() {
             path="/viewer"
             element={
               filePath ? (
-                <ShowSlide filePath={filePath} />
+                <ShowSlide />
               ) : (
                 <div className="text-center py-24 text-red-500">
                   No presentation uploaded. Please upload a file first.
