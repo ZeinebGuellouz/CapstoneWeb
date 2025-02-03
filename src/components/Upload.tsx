@@ -1,22 +1,31 @@
-import React, { useState, useRef } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import { Upload as UploadIcon, FileUp } from "lucide-react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 
 export function Upload() {
   const [dragActive, setDragActive] = useState(false);
   const [file, setFile] = useState<File | null>(null);
   const [uploadStatus, setUploadStatus] = useState<string | null>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null); // Ref for the file input
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const navigate = useNavigate();
+  const location = useLocation();
+
+  // Scroll to upload section if requested
+  useEffect(() => {
+    if (location.state?.scrollToUpload) {
+      setTimeout(() => {
+        const uploadSection = document.getElementById("upload");
+        if (uploadSection) {
+          uploadSection.scrollIntoView({ behavior: "smooth" });
+        }
+      }, 100);
+    }
+  }, [location.state]);
 
   const handleDrag = (e: React.DragEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    if (e.type === "dragenter" || e.type === "dragover") {
-      setDragActive(true);
-    } else if (e.type === "dragleave") {
-      setDragActive(false);
-    }
+    setDragActive(e.type === "dragenter" || e.type === "dragover");
   };
 
   const handleDrop = (e: React.DragEvent) => {
@@ -54,7 +63,7 @@ export function Upload() {
       if (response.ok) {
         const data = await response.json();
         setUploadStatus(`File uploaded successfully: ${data.filename}`);
-        navigate("/viewer", { state: { slides: data.slides } }); // Pass slides to ShowSlide
+        navigate("/viewer", { state: { slides: data.slides } });
       } else {
         setUploadStatus("Failed to upload the file. Please try again.");
       }
@@ -65,9 +74,7 @@ export function Upload() {
   };
 
   const openFileDialog = () => {
-    if (fileInputRef.current) {
-      fileInputRef.current.click(); // Programmatically trigger file input click
-    }
+    fileInputRef.current?.click();
   };
 
   return (
@@ -94,8 +101,8 @@ export function Upload() {
           >
             <input
               type="file"
-              className="hidden" // Hide the file input
-              ref={fileInputRef} // Attach the ref
+              className="hidden"
+              ref={fileInputRef}
               onChange={handleChange}
               accept=".ppt,.pptx,.pdf"
             />
@@ -112,14 +119,12 @@ export function Upload() {
                 <button
                   type="button"
                   className="relative cursor-pointer rounded-md font-medium text-primary focus:outline-none"
-                  onClick={openFileDialog} // Trigger file input click
+                  onClick={openFileDialog}
                 >
                   {file ? file.name : "Upload a file"}
                 </button>
               </div>
-              <p className="text-xs text-gray-500">
-                PPT, PPTX or PDF up to 50MB
-              </p>
+              <p className="text-xs text-gray-500">PPT, PPTX or PDF up to 50MB</p>
             </div>
           </div>
 
@@ -136,9 +141,7 @@ export function Upload() {
         {uploadStatus && (
           <p
             className={`mt-4 text-center ${
-              uploadStatus.startsWith("File uploaded")
-                ? "text-green-600"
-                : "text-red-600"
+              uploadStatus.startsWith("File uploaded") ? "text-green-600" : "text-red-600"
             }`}
           >
             {uploadStatus}
