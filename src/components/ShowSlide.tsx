@@ -1,155 +1,179 @@
 import { useState, useEffect, useRef } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
-import { Maximize } from "lucide-react";
-import { franc } from "franc-min";
-
-type Slide = {
-  image: string;
-  text: string;
-};
+import { Maximize2, ChevronRight, ChevronLeft, Presentation } from "lucide-react";
+import SlideNavigation from "./SlideNavigation";
+import SpeechEditor from "./SpeechEditor";
+import SpeechControls from "./SpeechControls";
+import { Slide } from "../types"; // Ensure the correct Slide type is imported
 
 export function ShowSlide() {
   const [slides, setSlides] = useState<Slide[]>([]);
-  const [currentSlide, setCurrentSlide] = useState(0);
+  const [currentSlideIndex, setCurrentSlideIndex] = useState(0);
   const [isFullScreen, setIsFullScreen] = useState(false);
-  const [isPlaying, setIsPlaying] = useState(false);
-  const [paused, setPaused] = useState(false);
+  const slideContainerRef = useRef<HTMLDivElement>(null);
   const navigate = useNavigate();
   const location = useLocation();
-  const slideContainerRef = useRef<HTMLDivElement>(null);
-  const currentSlideRef = useRef(currentSlide);
-  const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
 
   useEffect(() => {
     if (location.state?.slides) {
       setSlides(location.state.slides);
-      setCurrentSlide(0);
+      setCurrentSlideIndex(0);
     } else {
       setSlides([]);
     }
   }, [location.state]);
 
-  useEffect(() => {
-    const handleFullscreenChange = () => {
-      setIsFullScreen(!!document.fullscreenElement);
-    };
-    document.addEventListener("fullscreenchange", handleFullscreenChange);
-    return () => document.removeEventListener("fullscreenchange", handleFullscreenChange);
-  }, []);
-
-  useEffect(() => {
-    currentSlideRef.current = currentSlide;
-  }, [currentSlide]);
-
-  useEffect(() => {
-    const loadVoices = () => {
-      window.speechSynthesis.getVoices();
-    };
-    window.speechSynthesis.onvoiceschanged = loadVoices;
-  }, []);
-
-  const detectLanguageAndGetVoice = (text: string): SpeechSynthesisVoice | null => {
-    const languageCodeMap: Record<string, string> = {
-      fra: "fr-FR",
-      eng: "en-US",
-      spa: "es-ES",
-      deu: "de-DE",
-      ita: "it-IT",
-      por: "pt-PT",
-    };
-    const detectedLangCode = franc(text) || "eng";
-    const matchedLang = languageCodeMap[detectedLangCode] || "en-US";
-    const voices = window.speechSynthesis.getVoices();
-    return voices.find((voice) => voice.lang === matchedLang) || null;
-  };
-
-  const speakSlideText = (text: string) => {
-    if ("speechSynthesis" in window) {
-      if (paused && utteranceRef.current) {
-        window.speechSynthesis.resume();
-        setPaused(false);
-        return;
-      }
-      window.speechSynthesis.cancel();
-      const utterance = new SpeechSynthesisUtterance(text);
-      const voice = detectLanguageAndGetVoice(text);
-      if (voice) utterance.voice = voice;
-      utterance.onend = () => setIsPlaying(false);
-      utteranceRef.current = utterance;
-      window.speechSynthesis.speak(utterance);
-      setIsPlaying(true);
-    }
-  };
-
-  const toggleTTS = () => {
-    if (isPlaying) {
-      window.speechSynthesis.pause();
-      setPaused(true);
-    } else {
-      speakSlideText(slides[currentSlide]?.text);
-    }
-    setIsPlaying(!isPlaying);
-  };
-
-  useEffect(() => {
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Enter" && slides.length > 0) {
-        speakSlideText(slides[currentSlideRef.current]?.text);
-      }
-      if (event.key === "ArrowRight" && currentSlideRef.current < slides.length - 1) {
-        setCurrentSlide((prev) => prev + 1);
-        window.speechSynthesis.cancel();
-        speakSlideText(slides[currentSlideRef.current + 1]?.text);
-        speakSlideText(slides[currentSlideRef.current + 1]?.text);
-      }
-      if (event.key === "ArrowLeft" && currentSlideRef.current > 0) {
-        setCurrentSlide((prev) => prev - 1);
-        window.speechSynthesis.cancel();
-        speakSlideText(slides[currentSlideRef.current - 1]?.text);
-        speakSlideText(slides[currentSlideRef.current - 1]?.text);
-      }
-      if (event.key === " " && slides.length > 0) {
-        event.preventDefault();
-        toggleTTS();
-      }
-      if (event.key === "Escape" && isFullScreen) {
-        document.exitFullscreen();
-      }
-    };
-    document.addEventListener("keydown", handleKeyDown);
-    return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [slides, isPlaying, isFullScreen]);
+  const currentSlide = slides[currentSlideIndex];
 
   const toggleFullScreen = () => {
     if (!document.fullscreenElement && slideContainerRef.current) {
       slideContainerRef.current.requestFullscreen().catch(console.error);
+      setIsFullScreen(true);
     } else {
       document.exitFullscreen().catch(console.error);
+      setIsFullScreen(false);
     }
   };
 
+  const handleNextSlide = () => {
+    if (currentSlideIndex < slides.length - 1) {
+      setCurrentSlideIndex((prev) => prev + 1);
+    }
+  };
+
+  const handlePrevSlide = () => {
+    if (currentSlideIndex > 0) {
+      setCurrentSlideIndex((prev) => prev - 1);
+    }
+  };
+
+  // Handle keyboard navigation
+  useEffect(() => {
+    const handleKeyPress = (e: KeyboardEvent) => {
+      if (e.key === "ArrowRight") handleNextSlide();
+      if (e.key === "ArrowLeft") handlePrevSlide();
+      if (e.key === "f") toggleFullScreen();
+    };
+
+    window.addEventListener("keydown", handleKeyPress);
+    return () => window.removeEventListener("keydown", handleKeyPress);
+  }, [currentSlideIndex, slides.length]);
+
   return (
-    <div className={`min-h-screen ${isFullScreen ? "bg-black" : "bg-gray-50"}`}>
-      {!isFullScreen && (
-        <nav className="bg-white shadow-lg fixed w-full z-50">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex justify-between h-16 items-center">
-            <span className="text-xl font-bold text-gray-800 cursor-pointer" onClick={() => navigate("/", { state: { scrollToUpload: true } })}>PresentPro</span>
-            <button onClick={() => navigate("/", { state: { scrollToUpload: true } })} className="text-gray-600 hover:text-gray-900 px-3 py-2 rounded-md text-sm font-medium cursor-pointer">Upload a New Presentation</button>
+    <div className="min-h-screen flex flex-col bg-gray-50 dark:bg-gray-900">
+      {/* Navbar */}
+      <nav className="bg-white dark:bg-gray-800 shadow-md w-full fixed top-0 left-0 z-50 h-16 flex items-center px-6">
+        <h1
+          className="text-xl font-bold text-gray-900 dark:text-gray-100 cursor-pointer"
+          onClick={() => navigate("/")}
+        >
+          PresentPro
+        </h1>
+        <button
+          onClick={() => navigate("/", { state: { scrollToUpload: true } })}
+          className="ml-auto text-gray-700 dark:text-gray-300 text-sm font-medium hover:underline"
+        >
+          Upload a New Presentation
+        </button>
+      </nav>
+
+      {/* Main Content */}
+      <div className="flex flex-1 mt-16"> {/* Adjust margin-top to match navbar height */}
+        {/* Left Panel – Slide Navigation */}
+        <div className="w-80 bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 shadow-sm overflow-hidden">
+          <div className="p-4 border-b border-gray-200 dark:border-gray-700">
+            <div className="flex items-center gap-2 mb-2">
+              <Presentation className="h-5 w-5 text-primary" />
+              <h2 className="font-semibold text-lg text-gray-900 dark:text-gray-100">Slides</h2>
+            </div>
+            <p className="text-sm text-gray-500 dark:text-gray-400">
+              {slides.length} slides in presentation
+            </p>
           </div>
-        </nav>
-      )}
-      <main className={`pt-24 ${isFullScreen ? "pt-0" : ""}`}>
-        <div className="mt-8 max-w-4xl mx-auto">
-          <div ref={slideContainerRef} className="relative w-full flex items-center justify-center" style={{ height: isFullScreen ? "100vh" : "500px" }}>
-            {slides.length > 0 ? (
-              <img src={slides[currentSlide].image} alt={`Slide ${currentSlide + 1}`} className="max-w-full max-h-full object-contain" />
-            ) : (
-              <p className="text-gray-500">No slides available. Please upload a presentation.</p>
-            )}
-            <button onClick={toggleFullScreen} className="absolute top-4 right-4 bg-white p-2 rounded-full shadow-md hover:bg-gray-100"><Maximize className="h-6 w-6 text-gray-800" /></button>
+          <div className="p-4">
+            <SlideNavigation slides={slides} setCurrentSlideIndex={setCurrentSlideIndex} currentSlideIndex={currentSlideIndex} />
           </div>
         </div>
-      </main>
+
+        {/* Center Panel – Active Slide & Speech Editor */}
+        <div className="flex-1 flex flex-col p-6 space-y-6">
+          <div
+            ref={slideContainerRef}
+            className={`relative flex justify-center items-center bg-white dark:bg-gray-800 rounded-lg shadow-lg transition-all duration-200
+              ${isFullScreen ? "h-screen w-screen p-0" : "h-[600px] p-8"}`}
+          >
+            {currentSlide ? (
+              <img
+                src={currentSlide.image}
+                alt={currentSlide.title}
+                className="max-h-full max-w-full object-contain rounded"
+              />
+            ) : (
+              <div className="flex flex-col items-center justify-center text-center p-8">
+                <Presentation className="h-16 w-16 text-gray-400 mb-4" />
+                <p className="text-gray-500 dark:text-gray-400 text-lg">No slides available.</p>
+                <p className="text-gray-400 dark:text-gray-500 text-sm mt-2">
+                  Add slides to get started with your presentation
+                </p>
+              </div>
+            )}
+
+            {/* Fullscreen button */}
+            <button
+              onClick={toggleFullScreen}
+              className="absolute top-4 right-4 bg-white/90 dark:bg-gray-800/90 p-2 rounded-full shadow-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors duration-200 backdrop-blur-sm"
+            >
+              <Maximize2 className="h-5 w-5 text-gray-700 dark:text-gray-300" />
+            </button>
+
+            {/* Navigation Buttons */}
+            {slides.length > 1 && (
+              <>
+                <button
+                  onClick={handlePrevSlide}
+                  disabled={currentSlideIndex === 0}
+                  className="absolute left-4 p-3 rounded-full shadow-lg bg-white/90 dark:bg-gray-800/90 hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <ChevronLeft className="h-6 w-6 text-gray-700 dark:text-gray-300" />
+                </button>
+                <button
+                  onClick={handleNextSlide}
+                  disabled={currentSlideIndex === slides.length - 1}
+                  className="absolute right-4 p-3 rounded-full shadow-lg bg-white/90 dark:bg-gray-800/90 hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <ChevronRight className="h-6 w-6 text-gray-700 dark:text-gray-300" />
+                </button>
+              </>
+            )}
+
+            {/* Slide Progress */}
+            <div className="absolute bottom-4 left-1/2 -translate-x-1/2 bg-white/90 dark:bg-gray-800/90 px-4 py-2 rounded-full shadow-lg backdrop-blur-sm">
+              <p className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                {currentSlideIndex + 1} / {slides.length}
+              </p>
+            </div>
+          </div>
+
+          {/* Speech Editor */}
+          {currentSlide && (
+            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-lg p-6">
+              <SpeechEditor slide={currentSlide} />
+            </div>
+          )}
+        </div>
+
+        {/* Right Panel – Speech Customization & Controls */}
+        <div className="w-80 bg-white dark:bg-gray-800 border-l border-gray-200 dark:border-gray-700 shadow-sm">
+          <div className="p-4 border-b border-gray-200 dark:border-gray-700">
+            <h2 className="font-semibold text-lg text-gray-900 dark:text-gray-100">Speech Controls</h2>
+          </div>
+          <div className="p-4">
+            <SpeechControls />
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
+
+export default ShowSlide;
