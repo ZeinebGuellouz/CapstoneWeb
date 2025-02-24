@@ -13,15 +13,24 @@ export function ShowSlide() {
   const slideContainerRef = useRef<HTMLDivElement>(null);
   const navigate = useNavigate();
   const location = useLocation();
+  const [speeches, setSpeeches] = useState<{ [key: number]: string }>({});
 
   useEffect(() => {
     if (location.state?.slides) {
-      setSlides(location.state.slides);
+      const formattedSlides = location.state.slides.map((slide: any, index: number) => ({
+        presentationId: location.state.presentationId || "default_presentation_id", // Provide a default ID if missing
+        slideNumber: index + 1, // Assign slide numbers sequentially
+        text: slide.text || "",
+        image: slide.image || "",
+      }));
+  
+      setSlides(formattedSlides);
       setCurrentSlideIndex(0);
     } else {
       setSlides([]);
     }
   }, [location.state]);
+  
 
   const currentSlide = slides[currentSlideIndex];
 
@@ -30,10 +39,25 @@ export function ShowSlide() {
       slideContainerRef.current.requestFullscreen().catch(console.error);
       setIsFullScreen(true);
     } else {
-      document.exitFullscreen().catch(console.error);
+      if (document.fullscreenElement) {
+        document.exitFullscreen().catch(console.error);
+      }
       setIsFullScreen(false);
     }
   };
+  
+  // ✅ Handle exiting fullscreen on `ESC` key
+  useEffect(() => {
+    const handleFullscreenChange = () => {
+      if (!document.fullscreenElement) {
+        setIsFullScreen(false);
+      }
+    };
+  
+    document.addEventListener("fullscreenchange", handleFullscreenChange);
+    return () => document.removeEventListener("fullscreenchange", handleFullscreenChange);
+  }, []);
+  
 
   const handleNextSlide = () => {
     if (currentSlideIndex < slides.length - 1) {
@@ -53,11 +77,17 @@ export function ShowSlide() {
       if (e.key === "ArrowRight") handleNextSlide();
       if (e.key === "ArrowLeft") handlePrevSlide();
       if (e.key === "f") toggleFullScreen();
+      if (e.key === "Escape" && isFullScreen) toggleFullScreen(); 
     };
 
     window.addEventListener("keydown", handleKeyPress);
     return () => window.removeEventListener("keydown", handleKeyPress);
   }, [currentSlideIndex, slides.length]);
+ 
+  useEffect(() => {
+    console.log("Current Slide Data in ShowSlide:", currentSlide);
+  }, [currentSlide]);
+  
 
   return (
     <div className="min-h-screen flex flex-col bg-gray-50 dark:bg-gray-900">
@@ -157,7 +187,13 @@ export function ShowSlide() {
           {/* Speech Editor */}
           {currentSlide && (
             <div className="bg-white dark:bg-gray-800 rounded-lg shadow-lg p-6">
-              <SpeechEditor slide={currentSlide} />
+              <SpeechEditor
+                   slide={currentSlide}
+                   slides={slides}
+                   slideIndex={currentSlideIndex}
+                   speeches={speeches}
+                   setSpeeches={setSpeeches}
+                />
             </div>
           )}
         </div>
@@ -168,7 +204,8 @@ export function ShowSlide() {
             <h2 className="font-semibold text-lg text-gray-900 dark:text-gray-100">Speech Controls</h2>
           </div>
           <div className="p-4">
-            <SpeechControls />
+            {currentSlide && <SpeechControls slide={currentSlide} />}
+
           </div>
         </div>
       </div>

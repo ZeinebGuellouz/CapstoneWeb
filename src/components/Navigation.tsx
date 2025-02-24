@@ -1,5 +1,6 @@
-import React from "react";
+import * as React from "react";
 import { Menu, X } from "lucide-react";
+
 
 interface NavigationProps {
   isViewerPage?: boolean;
@@ -21,12 +22,19 @@ export function Navigation({ isViewerPage, navigateToUpload }: NavigationProps) 
     <nav className="bg-white shadow-lg fixed w-full z-50">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between h-16">
-          <div
-            className="flex items-center cursor-pointer"
-            onClick={() => (window.location.href = "/")}
-          >
-            <span className="text-xl font-bold text-gray-800">PresentPro</span>
-          </div>
+        <div
+  className="flex items-center cursor-pointer"
+  onClick={() => {
+    if (window.location.pathname === "/") {
+      document.getElementById("hero")?.scrollIntoView({ behavior: "smooth" });
+    } else {
+      window.location.href = "/";
+    }
+  }}
+>
+  <span className="text-xl font-bold text-gray-800">PresentPro</span>
+</div>
+
 
           {/* Desktop Navigation */}
           <div className="hidden md:flex items-center space-x-8">
@@ -43,7 +51,7 @@ export function Navigation({ isViewerPage, navigateToUpload }: NavigationProps) 
             ) : (
               <>
                 <button
-                  onClick={() => document.getElementById("hero")?.scrollIntoView({ behavior: "smooth" })}
+                 onClick={() => (window.location.pathname === "/" ? document.getElementById("hero")?.scrollIntoView({ behavior: "smooth" }) : (window.location.href = "/"))}
                   className="text-gray-600 hover:text-gray-900 px-3 py-2 rounded-md text-sm font-medium cursor-pointer"
                 >
                   Home

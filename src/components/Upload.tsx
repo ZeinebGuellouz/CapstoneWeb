@@ -1,6 +1,7 @@
-import  { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect } from "react";
 import { Upload as UploadIcon, FileUp } from "lucide-react";
 import { useNavigate, useLocation } from "react-router-dom";
+import { uploadFile } from "../api"; // ✅ Import API function
 
 export function Upload() {
   const [dragActive, setDragActive] = useState(false);
@@ -45,31 +46,20 @@ export function Upload() {
     }
   };
 
+  // ✅ Use API function instead of fetch()
   const handleUpload = async () => {
     if (!file) {
       setUploadStatus("Please select a file before uploading.");
       return;
     }
 
-    const formData = new FormData();
-    formData.append("file", file);
-
     try {
-      const response = await fetch("http://127.0.0.1:8000/upload/", {
-        method: "POST",
-        body: formData,
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        setUploadStatus(`File uploaded successfully: ${data.filename}`);
-        navigate("/viewer", { state: { slides: data.slides } });
-      } else {
-        setUploadStatus("Failed to upload the file. Please try again.");
-      }
+      const data = await uploadFile(file); // Call API function
+      setUploadStatus(`File uploaded successfully: ${data.filename}`);
+      navigate("/viewer", { state: { slides: data.slides } });
     } catch (error) {
       console.error("Error during file upload:", error);
-      setUploadStatus("An error occurred. Please try again.");
+      setUploadStatus("Failed to upload the file. Please try again.");
     }
   };
 
@@ -139,11 +129,9 @@ export function Upload() {
         </div>
 
         {uploadStatus && (
-          <p
-            className={`mt-4 text-center ${
-              uploadStatus.startsWith("File uploaded") ? "text-green-600" : "text-red-600"
-            }`}
-          >
+          <p className={`mt-4 text-center ${
+            uploadStatus.startsWith("File uploaded") ? "text-green-600" : "text-red-600"
+          }`}>
             {uploadStatus}
           </p>
         )}
