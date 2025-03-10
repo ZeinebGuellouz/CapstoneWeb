@@ -1,13 +1,14 @@
 import * as React from "react";
 import { Menu, X } from "lucide-react";
 
-
 interface NavigationProps {
   isViewerPage?: boolean;
-  navigateToUpload?: () => void; // Function to handle Upload navigation
+  navigateToUpload?: () => void;
+  user: string | null; // ✅ Pass user state
+  onLogout: () => void; // ✅ Logout function
 }
 
-export function Navigation({ isViewerPage, navigateToUpload }: NavigationProps) {
+export function Navigation({ isViewerPage, navigateToUpload, user, onLogout }: NavigationProps) {
   const [isOpen, setIsOpen] = React.useState(false);
 
   const navItems = [
@@ -21,20 +22,20 @@ export function Navigation({ isViewerPage, navigateToUpload }: NavigationProps) 
   return (
     <nav className="bg-white shadow-lg fixed w-full z-50">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex justify-between h-16">
-        <div
-  className="flex items-center cursor-pointer"
-  onClick={() => {
-    if (window.location.pathname === "/") {
-      document.getElementById("hero")?.scrollIntoView({ behavior: "smooth" });
-    } else {
-      window.location.href = "/";
-    }
-  }}
->
-  <span className="text-xl font-bold text-gray-800">PresentPro</span>
-</div>
-
+        <div className="flex justify-between h-16 items-center">
+          {/* Logo */}
+          <div
+            className="flex items-center cursor-pointer"
+            onClick={() => {
+              if (window.location.pathname === "/") {
+                document.getElementById("hero")?.scrollIntoView({ behavior: "smooth" });
+              } else {
+                window.location.href = "/";
+              }
+            }}
+          >
+            <span className="text-xl font-bold text-gray-800">PresentPro</span>
+          </div>
 
           {/* Desktop Navigation */}
           <div className="hidden md:flex items-center space-x-8">
@@ -51,7 +52,11 @@ export function Navigation({ isViewerPage, navigateToUpload }: NavigationProps) 
             ) : (
               <>
                 <button
-                 onClick={() => (window.location.pathname === "/" ? document.getElementById("hero")?.scrollIntoView({ behavior: "smooth" }) : (window.location.href = "/"))}
+                  onClick={() =>
+                    window.location.pathname === "/"
+                      ? document.getElementById("hero")?.scrollIntoView({ behavior: "smooth" })
+                      : (window.location.href = "/")
+                  }
                   className="text-gray-600 hover:text-gray-900 px-3 py-2 rounded-md text-sm font-medium cursor-pointer"
                 >
                   Home
@@ -74,6 +79,16 @@ export function Navigation({ isViewerPage, navigateToUpload }: NavigationProps) 
                 >
                   Contact
                 </button>
+
+                {/* ✅ Show Logout Button Only When User is Logged In */}
+                {user && (
+                  <button
+                    onClick={onLogout}
+                    className="bg-red-500 text-white px-4 py-2 rounded-md text-sm font-medium cursor-pointer hover:bg-red-600 transition"
+                  >
+                    Logout
+                  </button>
+                )}
               </>
             )}
           </div>
@@ -103,6 +118,15 @@ export function Navigation({ isViewerPage, navigateToUpload }: NavigationProps) 
                 {item.title}
               </button>
             ))}
+            {/* ✅ Show Logout Button Only When User is Logged In (Mobile View) */}
+            {user && (
+              <button
+                onClick={onLogout}
+                className="block w-full text-left px-3 py-2 rounded-md text-base font-medium text-red-500 hover:text-red-700 hover:bg-gray-50"
+              >
+                Logout
+              </button>
+            )}
           </div>
         </div>
       )}

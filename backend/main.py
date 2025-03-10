@@ -16,6 +16,8 @@ from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, Session
 from pydantic import BaseModel
 import requests 
+import bcrypt
+import json
 
 # ========== FASTAPI SETUP ==========
 app = FastAPI()
@@ -28,6 +30,176 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# ========== DATABASE SETUP ==========
+
+# ✅ Users Database (Authentication)
+USERS_DATABASE_URL = "sqlite:///./users.db"
+users_engine = create_engine(USERS_DATABASE_URL, connect_args={"check_same_thread": False})
+UsersSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=users_engine)
+UsersBase = declarative_base()
+
+# ✅ Speeches Database (Presentation)
+SPEECHES_DATABASE_URL = "sqlite:///./speeches.db"
+speeches_engine = create_engine(SPEECHES_DATABASE_URL, connect_args={"check_same_thread": False})
+SpeechesSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=speeches_engine)
+SpeechesBase = declarative_base()
+
+# ========== USER DATABASE MODEL ==========
+class UserDB(UsersBase):
+    __tablename__ = "users"
+
+    id = Column(Integer, primary_key=True, index=True)
+    username = Column(String, unique=True, index=True)
+    password = Column(String)  # Hashed password
+
+UsersBase.metadata.create_all(bind=users_engine)
+
+# ========== SPEECHES DATABASE MODEL ==========
+class Speech(SpeechesBase):
+    __tablename__ = "speeches"
+
+    id = Column(Integer, primary_key=True, index=True)
+    presentation_id = Column(String, index=True)
+    slide_number = Column(Integer, index=True)
+    generated_speech = Column(String)
+    voice_tone = Column(String, default="Formal")
+    speed = Column(Float, default=1.0)
+    pitch = Column(Float, default=1.0)
+SpeechesBase.metadata.create_all(bind=speeches_engine)
+
+
+# ========== DATABASE DEPENDENCIES ==========
+
+def process_pdf(file_path: Path) -> List[str]:
+    """Convert PDF pages to images."""
+    try:
+        slides = convert_from_path(file_path, dpi=150, output_folder=SLIDE_DIR, fmt="png")
+        return [f"/uploads/slides/{Path(slide.filename).name}" for slide in slides]
+    except Exception as e:
+        print(f"Error processing PDF: {e}")
+        return []
+
+def extract_text_from_pptx(file_path: Path) -> List[str]:
+    """Extract text from each slide in a .pptx file."""
+    try:
+        prs = Presentation(file_path)
+        slide_texts = []
+        for slide in prs.slides:
+            text = []
+            for shape in slide.shapes:
+                if shape.has_text_frame:
+                    text.append(shape.text)
+            slide_texts.append("\n".join(text))
+        return slide_texts
+    except Exception as e:
+        print(f"Error extracting text from PPTX: {e}")
+        return []
+
+def extract_text_from_pdf(file_path: Path) -> List[str]:
+    """Extract text from each page in a PDF."""
+    try:
+        slide_texts = []
+        with pdfplumber.open(file_path) as pdf:
+            for page in pdf.pages:
+                slide_texts.append(page.extract_text() or "")
+        return slide_texts
+    except Exception as e:
+        print(f"Error extracting text from PDF: {e}")
+        return []
+
+def process_pptx(file_path: Path) -> List[str]:
+    """Extract slide images from a .pptx file."""
+    pythoncom.CoInitialize()
+    pptx_file = os.path.abspath(file_path)
+    output_folder = os.path.abspath(SLIDE_DIR)
+    os.makedirs(output_folder, exist_ok=True)
+
+    try:
+        powerpoint = comtypes.client.CreateObject("PowerPoint.Application")
+        presentation = powerpoint.Presentations.Open(pptx_file, WithWindow=False)
+
+        slide_paths = []
+        for i, slide in enumerate(presentation.Slides):
+            output_image = os.path.join(output_folder, f"slide_{i + 1}.png")
+            slide.Export(output_image, "PNG", 1280, 720)
+            slide_paths.append(f"/uploads/slides/slide_{i + 1}.png")
+
+        presentation.Close()
+        powerpoint.Quit()
+        return slide_paths
+    except Exception as e:
+        print(f"Error processing PPTX: {e}")
+        return []
+
+def get_users_db():
+    db = UsersSessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
+
+def get_speeches_db():
+    db = SpeechesSessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
+
+     
+
+# ========== Pydantic Models ==========
+class User(BaseModel):
+    username: str
+    password: str
+
+class SpeechRequest(BaseModel):
+    presentation_id: str
+    slide_number: int
+    generated_speech: str
+    voice_tone: str = "Formal"
+    speed: float = 1.0
+    pitch: float = 1.0
+
+# ========== SIGNUP ==========
+@app.post("/signup")
+def signup(user: User, db: Session = Depends(get_users_db)):
+    existing_user = db.query(UserDB).filter(UserDB.username == user.username).first()
+    
+    if existing_user:
+        raise HTTPException(status_code=400, detail="Username already exists.")
+
+    # ✅ Hash password before storing
+    hashed_password = bcrypt.hashpw(user.password.encode(), bcrypt.gensalt()).decode()
+
+    new_user = UserDB(username=user.username, password=hashed_password)
+    db.add(new_user)
+    db.commit()
+
+    print(f"✅ User {user.username} registered successfully!")  # Debugging
+    return {"message": "User registered successfully"}
+
+# ========== LOGIN ==========
+@app.post("/login")
+def login(user: User, db: Session = Depends(get_users_db)):  # ✅ Fixed get_db → get_users_db
+    print(f"🔍 Checking login for: {user.username}")
+
+    existing_user = db.query(UserDB).filter(UserDB.username == user.username).first()
+
+    if not existing_user:
+        print("❌ User not found in the database!")
+        raise HTTPException(status_code=400, detail="Invalid username or password.")
+
+    print(f"✅ User found: {existing_user.username}, Hashed Password: {existing_user.password}")
+
+    if not bcrypt.checkpw(user.password.encode(), existing_user.password.encode()):
+        print("❌ Password mismatch!")
+        raise HTTPException(status_code=400, detail="Invalid username or password.")
+
+    print("🎉 Login successful!")
+    return {"message": "Login successful"}
+
+# ========== API to Generate Speech ==========
 # ✅ API to generate speech using Mistral (via Ollama)
 @app.post("/generate_speech/")
 async def generate_speech(request: Request):
@@ -92,118 +264,35 @@ async def generate_speech(request: Request):
     except Exception as e:
         return {"error": f"Unexpected error: {str(e)}"}
 
-# ========== DATABASE SETUP ==========
-DATABASE_URL = "sqlite:///./speeches.db"
-engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-Base = declarative_base()
-
-# Define Speech Model
-class Speech(Base):
-    __tablename__ = "speeches"
-
-    id = Column(Integer, primary_key=True, index=True)
-    presentation_id = Column(String, index=True)
-    slide_number = Column(Integer, index=True)
-    generated_speech = Column(String)
-    voice_tone = Column(String, default="Formal")
-    speed = Column(Float, default=1.0)
-    pitch = Column(Float, default=1.0)
-
-Base.metadata.create_all(bind=engine)
-
-# Pydantic Model for Requests
-class SpeechRequest(BaseModel):
-    presentation_id: str
-    slide_number: int
-    generated_speech: str
-    voice_tone: str = "Formal"
-    speed: float = 1.0
-    pitch: float = 1.0
-
-# Dependency to Get DB Session
-def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
-
-# ========== UPLOAD DIRECTORY SETUP ==========
-UPLOAD_DIR = Path("uploads")
-SLIDE_DIR = UPLOAD_DIR / "slides"
-UPLOAD_DIR.mkdir(exist_ok=True)
-SLIDE_DIR.mkdir(exist_ok=True)
-
-def clear_slide_directory():
-    """Clears the slide directory before processing a new file."""
-    for file in SLIDE_DIR.iterdir():
-        if file.is_file():
-            file.unlink()
-
-# ========== FILE PROCESSING FUNCTIONS ==========
-def process_pptx(file_path: Path) -> List[str]:
-    """Extract slide images from a .pptx file."""
-    pythoncom.CoInitialize()
-    pptx_file = os.path.abspath(file_path)
-    output_folder = os.path.abspath(SLIDE_DIR)
-    os.makedirs(output_folder, exist_ok=True)
-
-    try:
-        powerpoint = comtypes.client.CreateObject("PowerPoint.Application")
-        presentation = powerpoint.Presentations.Open(pptx_file, WithWindow=False)
-
-        slide_paths = []
-        for i, slide in enumerate(presentation.Slides):
-            output_image = os.path.join(output_folder, f"slide_{i + 1}.png")
-            slide.Export(output_image, "PNG", 1280, 720)
-            slide_paths.append(f"/uploads/slides/slide_{i + 1}.png")
-
-        presentation.Close()
-        powerpoint.Quit()
-        return slide_paths
-    except Exception as e:
-        print(f"Error processing PPTX: {e}")
-        return []
-
-def extract_text_from_pptx(file_path: Path) -> List[str]:
-    """Extract text from each slide in a .pptx file."""
-    try:
-        prs = Presentation(file_path)
-        slide_texts = []
-        for slide in prs.slides:
-            text = []
-            for shape in slide.shapes:
-                if shape.has_text_frame:
-                    text.append(shape.text)
-            slide_texts.append("\n".join(text))
-        return slide_texts
-    except Exception as e:
-        print(f"Error extracting text from PPTX: {e}")
-        return []
-
-def process_pdf(file_path: Path) -> List[str]:
-    """Convert PDF pages to images."""
-    try:
-        slides = convert_from_path(file_path, dpi=150, output_folder=SLIDE_DIR, fmt="png")
-        return [f"/uploads/slides/{Path(slide.filename).name}" for slide in slides]
-    except Exception as e:
-        print(f"Error processing PDF: {e}")
-        return []
-
-def extract_text_from_pdf(file_path: Path) -> List[str]:
-    """Extract text from each page in a PDF."""
-    try:
-        slide_texts = []
-        with pdfplumber.open(file_path) as pdf:
-            for page in pdf.pages:
-                slide_texts.append(page.extract_text() or "")
-        return slide_texts
-    except Exception as e:
-        print(f"Error extracting text from PDF: {e}")
-        return []
-
 # ========== API ROUTES ==========
+@app.get("/uploads/slides/{filename}")
+async def get_slide(filename: str):
+    """Serve slide images."""
+    file_path = SLIDE_DIR / filename
+    if not file_path.exists():
+        raise HTTPException(status_code=404, detail="File not found.")
+    return FileResponse(file_path, headers={"Cache-Control": "no-cache, no-store, must-revalidate"})
+
+@app.post("/save_speech")
+async def save_speech(request: Request, db: Session = Depends(get_speeches_db)):
+    body = await request.json()
+    speech = SpeechRequest(**body)
+
+    existing_speech = db.query(Speech).filter(
+        Speech.presentation_id == speech.presentation_id,
+        Speech.slide_number == speech.slide_number
+    ).first()
+
+    if existing_speech:
+        existing_speech.generated_speech = speech.generated_speech
+        existing_speech.voice_tone = speech.voice_tone
+        existing_speech.speed = speech.speed
+        existing_speech.pitch = speech.pitch
+    else:
+        db.add(Speech(**speech.dict()))
+
+    db.commit()
+    return {"message": "Speech settings saved successfully!"}
 @app.post("/upload/")
 async def upload_file(file: UploadFile = File(...)):
     file_ext = file.filename.split(".")[-1].lower()
@@ -242,81 +331,28 @@ async def upload_file(file: UploadFile = File(...)):
         ],
     }
 
-@app.get("/uploads/slides/{filename}")
-async def get_slide(filename: str):
-    """Serve slide images."""
-    file_path = SLIDE_DIR / filename
-    if not file_path.exists():
-        raise HTTPException(status_code=404, detail="File not found.")
-    return FileResponse(file_path, headers={"Cache-Control": "no-cache, no-store, must-revalidate"})
+# ========== UPLOAD DIRECTORY SETUP ==========
+UPLOAD_DIR = Path("uploads")
+SLIDE_DIR = UPLOAD_DIR / "slides"
+UPLOAD_DIR.mkdir(exist_ok=True)
+SLIDE_DIR.mkdir(exist_ok=True)
 
-
-@app.post("/save_speech")
-async def save_speech(request: Request, db: Session = Depends(get_db)):
-    """Save or update speech settings for a given slide."""
-    body = await request.json()
-
-    try:
-        # ✅ Validate request
-        speech = SpeechRequest(**body)
-    except Exception as e:
-        print("Validation error:", e)
-        raise HTTPException(status_code=422, detail=f"Invalid data format: {str(e)}")
-
-    # ✅ Check if a speech entry already exists
-    existing_speech = db.query(Speech).filter(
-        Speech.presentation_id == speech.presentation_id,
-        Speech.slide_number == speech.slide_number
-    ).first()
-
-    if existing_speech:
-        # ✅ Update existing speech entry
-        existing_speech.generated_speech = speech.generated_speech or existing_speech.generated_speech
-        existing_speech.voice_tone = speech.voice_tone or existing_speech.voice_tone
-        existing_speech.speed = speech.speed or existing_speech.speed
-        existing_speech.pitch = speech.pitch or existing_speech.pitch
-    else:
-        # ✅ Create a new speech entry
-        new_speech = Speech(
-            presentation_id=speech.presentation_id,
-            slide_number=speech.slide_number,
-            generated_speech=speech.generated_speech or "",
-            voice_tone=speech.voice_tone or "Formal",
-            speed=speech.speed or 1.0,
-            pitch=speech.pitch or 1.0
-        )
-        db.add(new_speech)
-
-    db.commit()
-    return {"message": "Speech settings saved successfully!"}
-
+def clear_slide_directory():
+    """Clears the slide directory before processing a new file."""
+    for file in SLIDE_DIR.iterdir():
+        if file.is_file():
+            file.unlink()
 
 
 @app.get("/get_speech")
-async def get_speech(presentation_id: str, slide_number: int, db: Session = Depends(get_db)):
-    """Retrieve saved speech and settings for a specific slide."""
+async def get_speech(presentation_id: str, slide_number: int, db: Session = Depends(get_speeches_db)):
     speech = db.query(Speech).filter(
         Speech.presentation_id == presentation_id,
         Speech.slide_number == slide_number
     ).first()
 
-    if not speech:
-        return {
-            "generated_speech": "",
-            "voice_tone": "Formal",
-            "speed": 1.0,
-            "pitch": 1.0,
-        }  # ✅ Return default settings if no saved speech
-
-    return {
-        "generated_speech": speech.generated_speech,
-        "voice_tone": speech.voice_tone,
-        "speed": speech.speed,
-        "pitch": speech.pitch,
-    }
+    return speech if speech else {"generated_speech": "", "voice_tone": "Formal", "speed": 1.0, "pitch": 1.0}
 
 @app.get("/")
 def root():
     return {"message": "Backend is running!"}
-
-app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")

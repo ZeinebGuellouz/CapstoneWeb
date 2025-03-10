@@ -1,4 +1,5 @@
 import { Routes, Route, useLocation, useNavigate } from "react-router-dom";
+import { useState, useEffect } from "react";
 import { Navigation } from "./components/Navigation";
 import { Hero } from "./components/Hero";
 import { Features } from "./components/Features";
@@ -10,35 +11,40 @@ function App() {
   const location = useLocation();
   const navigate = useNavigate();
 
-  // Retrieve the filePath from localStorage
-  const filePath = localStorage.getItem("uploadedFilePath");
+  // ✅ Track User Session
+  const [user, setUser] = useState<string | null>(localStorage.getItem("authenticatedUser"));
 
-  // Navigate and scroll to upload section
+  // ✅ Persist login state on refresh
+  useEffect(() => {
+    setUser(localStorage.getItem("authenticatedUser"));
+  }, []);
+
+  // ✅ Handle logout
+  const handleLogout = () => {
+    localStorage.removeItem("authenticatedUser"); // Remove session
+    setUser(null); // Update state
+    navigate("/"); // Redirect to home
+  };
+
+  // ✅ Navigate and scroll to upload section
   const navigateToUpload = () => {
     if (location.pathname !== "/") {
-      // Navigate to home page first
       navigate("/");
-      // Scroll after a short delay
       setTimeout(() => {
-        const uploadSection = document.getElementById("upload");
-        if (uploadSection) {
-          uploadSection.scrollIntoView({ behavior: "smooth" });
-        }
-      }, 100); // Adjust delay if necessary
+        document.getElementById("upload")?.scrollIntoView({ behavior: "smooth" });
+      }, 100);
     } else {
-      // Already on home page, directly scroll to upload section
-      const uploadSection = document.getElementById("upload");
-      if (uploadSection) {
-        uploadSection.scrollIntoView({ behavior: "smooth" });
-      }
+      document.getElementById("upload")?.scrollIntoView({ behavior: "smooth" });
     }
   };
 
   return (
     <div className="min-h-screen bg-white">
       <Navigation
-        isViewerPage={location.pathname === "/viewer"} // Pass viewer-specific behavior
-        navigateToUpload={navigateToUpload} // Pass function for Upload navigation
+        isViewerPage={location.pathname === "/viewer"}
+        navigateToUpload={navigateToUpload}
+        user={user} // ✅ Pass user state
+        onLogout={handleLogout} // ✅ Pass logout function
       />
 
       <main className="relative">
@@ -49,7 +55,7 @@ function App() {
               <>
                 <Hero />
                 <Features />
-                <Upload />
+                <Upload user={user} setUser={setUser} />  {/* ✅ Pass setUser to Upload */}
                 <Contact />
               </>
             }
@@ -57,7 +63,7 @@ function App() {
           <Route
             path="/viewer"
             element={
-              filePath ? (
+              localStorage.getItem("uploadedFilePath") ? (
                 <ShowSlide />
               ) : (
                 <div className="text-center py-24 text-red-500">

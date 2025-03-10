@@ -2,16 +2,51 @@ import { useState, useRef, useEffect } from "react";
 import { Upload as UploadIcon, FileUp } from "lucide-react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { uploadFile } from "../api"; // ✅ Import API function
+import LoginModal from "./ui/LoginModal"; // ✅ Import Login Modal
 
-export function Upload() {
+interface UploadProps {
+  user: string | null;  // ✅ Add user prop
+  setUser: (user: string | null) => void;
+}
+
+export function Upload({ user, setUser }: UploadProps) {// ✅ Use user from props
   const [dragActive, setDragActive] = useState(false);
   const [file, setFile] = useState<File | null>(null);
   const [uploadStatus, setUploadStatus] = useState<string | null>(null);
+  const [showLoginModal, setShowLoginModal] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const navigate = useNavigate();
   const location = useLocation();
 
-  // Scroll to upload section if requested
+  // ✅ Login Function
+  const handleLogin = async (username: string, password: string) => {
+    try {
+      const response = await fetch("http://127.0.0.1:8000/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username, password }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        alert(data.detail || "Invalid username or password.");
+        return;
+      }
+
+      // ✅ Update user session
+      localStorage.setItem("authenticatedUser", username);
+      setUser(username); // ✅ Update user state in App.tsx
+      setShowLoginModal(false);
+      alert(`Login successful! Welcome, ${username}.`);
+    } catch (error) {
+      console.error("Login error:", error);
+      alert("Failed to login. Please try again.");
+    }
+  };
+
+
+
   useEffect(() => {
     if (location.state?.scrollToUpload) {
       setTimeout(() => {
@@ -46,15 +81,20 @@ export function Upload() {
     }
   };
 
-  // ✅ Use API function instead of fetch()
+  // ✅ Upload File Function
   const handleUpload = async () => {
+    if (!user) {
+      setShowLoginModal(true);
+      return;
+    }
+
     if (!file) {
       setUploadStatus("Please select a file before uploading.");
       return;
     }
 
     try {
-      const data = await uploadFile(file); // Call API function
+      const data = await uploadFile(file);
       setUploadStatus(`File uploaded successfully: ${data.filename}`);
       navigate("/viewer", { state: { slides: data.slides } });
     } catch (error) {
@@ -105,36 +145,43 @@ export function Upload() {
                   <UploadIcon className="h-12 w-12 text-gray-400" />
                 )}
               </div>
-              <div className="flex text-sm text-gray-600">
-                <button
-                  type="button"
-                  className="relative cursor-pointer rounded-md font-medium text-primary focus:outline-none"
-                  onClick={openFileDialog}
-                >
-                  {file ? file.name : "Upload a file"}
-                </button>
-              </div>
+              <button
+                type="button"
+                className="relative cursor-pointer rounded-md font-medium text-primary focus:outline-none"
+                onClick={openFileDialog}
+              >
+                {file ? file.name : "Upload a file"}
+              </button>
               <p className="text-xs text-gray-500">PPT, PPTX or PDF up to 50MB</p>
             </div>
           </div>
 
           {file && (
-            <button
-              className="mt-6 w-full flex justify-center py-3 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-primary hover:bg-primary-light transition-colors duration-200 animate-fade-in"
-              onClick={handleUpload}
-            >
+            <button className="mt-6 w-full bg-primary text-white py-3 px-4 rounded-md" onClick={handleUpload}>
               Process Presentation
             </button>
           )}
         </div>
 
-        {uploadStatus && (
-          <p className={`mt-4 text-center ${
-            uploadStatus.startsWith("File uploaded") ? "text-green-600" : "text-red-600"
-          }`}>
-            {uploadStatus}
-          </p>
-        )}
+        {/* ✅ Show Login Modal when needed */}
+        {showLoginModal && <LoginModal onClose={() => setShowLoginModal(false)} onLogin={handleLogin} />}
+
+        {/* ✅ Show Logout Option */}
+        <div className="text-center mt-6">
+          {/* ✅ Show Logout Option */}
+<div className="text-center mt-6">
+
+
+  {/* ✅ Show Upload Status Message */}
+  {uploadStatus && (
+    <p className={`mt-4 text-center ${
+      uploadStatus.startsWith("File uploaded") ? "text-green-600" : "text-red-600"
+    }`}>
+      {uploadStatus}
+    </p>
+  )}
+</div>
+     </div>
       </div>
     </div>
   );
