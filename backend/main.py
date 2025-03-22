@@ -15,12 +15,28 @@ from sqlalchemy import create_engine, Column, Integer, String, Float
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, Session
 from pydantic import BaseModel
-import requests 
-import bcrypt
-import json
+import requests
+import firebase_admin
+from firebase_admin import credentials, auth, firestore
+from fastapi import Header
+
 
 # ========== FASTAPI SETUP ==========
 app = FastAPI()
+os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = "presentpro-b7e76-firebase-adminsdk-fbsvc-f540aa32d5.json"
+
+cred = credentials.Certificate("presentpro-b7e76-firebase-adminsdk-fbsvc-f540aa32d5.json")
+firebase_admin.initialize_app(cred)
+db = firestore.Client()
+
+# ✅ Function to verify Firebase Token
+def verify_firebase_token(token: str):
+    try:
+        decoded_token = auth.verify_id_token(token)
+        return decoded_token  # Returns user data
+    except Exception as e:
+        print(f"Token verification failed: {e}")
+        return None
 
 # Enable CORS
 app.add_middleware(
@@ -31,29 +47,48 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# ========== SIGNUP (Handled by Firebase) ==========
+class UserSignup(BaseModel):
+    email: str
+    password: str
+
+@app.post("/signup")
+def signup(user: UserSignup):
+    try:
+        # ✅ Create user in Firebase
+        firebase_user = auth.create_user(email=user.email, password=user.password)
+        return {"message": "User registered successfully", "uid": firebase_user.uid}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+# ✅ API Route for OAuth Login (Google & Facebook)
+@app.post("/oauth-login")
+def oauth_login(authorization: str = Header(...)):
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Missing or invalid token format")
+
+    token = authorization.split("Bearer ")[1]  # ✅ Extract the token
+    user_data = verify_firebase_token(token)
+
+    if not user_data:
+        raise HTTPException(status_code=401, detail="Invalid Firebase Token")
+
+    return {"message": "OAuth login successful", "email": user_data.get("email")}
+
+# ✅ PASSWORD RESET (Handled by Firebase)
+@app.post("/reset-password")
+def reset_password(email: str):
+    try:
+        auth.generate_password_reset_link(email)
+        return {"message": "Password reset email sent successfully"}
+    except firebase_admin.exceptions.FirebaseError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
 # ========== DATABASE SETUP ==========
-
-# ✅ Users Database (Authentication)
-USERS_DATABASE_URL = "sqlite:///./users.db"
-users_engine = create_engine(USERS_DATABASE_URL, connect_args={"check_same_thread": False})
-UsersSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=users_engine)
-UsersBase = declarative_base()
-
-# ✅ Speeches Database (Presentation)
 SPEECHES_DATABASE_URL = "sqlite:///./speeches.db"
 speeches_engine = create_engine(SPEECHES_DATABASE_URL, connect_args={"check_same_thread": False})
 SpeechesSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=speeches_engine)
 SpeechesBase = declarative_base()
-
-# ========== USER DATABASE MODEL ==========
-class UserDB(UsersBase):
-    __tablename__ = "users"
-
-    id = Column(Integer, primary_key=True, index=True)
-    username = Column(String, unique=True, index=True)
-    password = Column(String)  # Hashed password
-
-UsersBase.metadata.create_all(bind=users_engine)
 
 # ========== SPEECHES DATABASE MODEL ==========
 class Speech(SpeechesBase):
@@ -68,11 +103,8 @@ class Speech(SpeechesBase):
     pitch = Column(Float, default=1.0)
 SpeechesBase.metadata.create_all(bind=speeches_engine)
 
-
 # ========== DATABASE DEPENDENCIES ==========
-
 def process_pdf(file_path: Path) -> List[str]:
-    """Convert PDF pages to images."""
     try:
         slides = convert_from_path(file_path, dpi=150, output_folder=SLIDE_DIR, fmt="png")
         return [f"/uploads/slides/{Path(slide.filename).name}" for slide in slides]
@@ -81,7 +113,6 @@ def process_pdf(file_path: Path) -> List[str]:
         return []
 
 def extract_text_from_pptx(file_path: Path) -> List[str]:
-    """Extract text from each slide in a .pptx file."""
     try:
         prs = Presentation(file_path)
         slide_texts = []
@@ -97,7 +128,6 @@ def extract_text_from_pptx(file_path: Path) -> List[str]:
         return []
 
 def extract_text_from_pdf(file_path: Path) -> List[str]:
-    """Extract text from each page in a PDF."""
     try:
         slide_texts = []
         with pdfplumber.open(file_path) as pdf:
@@ -109,7 +139,6 @@ def extract_text_from_pdf(file_path: Path) -> List[str]:
         return []
 
 def process_pptx(file_path: Path) -> List[str]:
-    """Extract slide images from a .pptx file."""
     pythoncom.CoInitialize()
     pptx_file = os.path.abspath(file_path)
     output_folder = os.path.abspath(SLIDE_DIR)
@@ -132,13 +161,6 @@ def process_pptx(file_path: Path) -> List[str]:
         print(f"Error processing PPTX: {e}")
         return []
 
-def get_users_db():
-    db = UsersSessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
-
 def get_speeches_db():
     db = SpeechesSessionLocal()
     try:
@@ -146,13 +168,7 @@ def get_speeches_db():
     finally:
         db.close()
 
-     
-
 # ========== Pydantic Models ==========
-class User(BaseModel):
-    username: str
-    password: str
-
 class SpeechRequest(BaseModel):
     presentation_id: str
     slide_number: int
@@ -161,76 +177,33 @@ class SpeechRequest(BaseModel):
     speed: float = 1.0
     pitch: float = 1.0
 
-# ========== SIGNUP ==========
-@app.post("/signup")
-def signup(user: User, db: Session = Depends(get_users_db)):
-    existing_user = db.query(UserDB).filter(UserDB.username == user.username).first()
-    
-    if existing_user:
-        raise HTTPException(status_code=400, detail="Username already exists.")
-
-    # ✅ Hash password before storing
-    hashed_password = bcrypt.hashpw(user.password.encode(), bcrypt.gensalt()).decode()
-
-    new_user = UserDB(username=user.username, password=hashed_password)
-    db.add(new_user)
-    db.commit()
-
-    print(f"✅ User {user.username} registered successfully!")  # Debugging
-    return {"message": "User registered successfully"}
-
-# ========== LOGIN ==========
-@app.post("/login")
-def login(user: User, db: Session = Depends(get_users_db)):  # ✅ Fixed get_db → get_users_db
-    print(f"🔍 Checking login for: {user.username}")
-
-    existing_user = db.query(UserDB).filter(UserDB.username == user.username).first()
-
-    if not existing_user:
-        print("❌ User not found in the database!")
-        raise HTTPException(status_code=400, detail="Invalid username or password.")
-
-    print(f"✅ User found: {existing_user.username}, Hashed Password: {existing_user.password}")
-
-    if not bcrypt.checkpw(user.password.encode(), existing_user.password.encode()):
-        print("❌ Password mismatch!")
-        raise HTTPException(status_code=400, detail="Invalid username or password.")
-
-    print("🎉 Login successful!")
-    return {"message": "Login successful"}
-
 # ========== API to Generate Speech ==========
-# ✅ API to generate speech using Mistral (via Ollama)
 @app.post("/generate_speech/")
 async def generate_speech(request: Request):
     try:
         body = await request.json()
-        previous_slides = body.get("previous_slides", [])  # ✅ Context from previous slides
-        current_slide = body.get("current_slide", {})  # ✅ Only generate speech for this slide
-        slide_index = body.get("slide_index", 0)  # ✅ Track which slide we're on
+        previous_slides = body.get("previous_slides", [])
+        current_slide = body.get("current_slide", {})
+        slide_index = body.get("slide_index", 0)
 
         if not current_slide:
             return {"error": "No current slide provided"}
 
-        # ✅ Detect language from the slide content (Basic Heuristic)
         first_slide_text = previous_slides[0]["text"] if previous_slides else current_slide["text"]
         language = "French" if any(word in first_slide_text.lower() for word in ["le", "la", "les", "un", "une", "est", "avec"]) else "English"
 
-        # ✅ Refined prompt ensuring context flow, brevity & correct language
         prompt = (
             f"You are an AI assistant generating **concise, natural-sounding** speech for a {language} presentation. "
             f"Your speech should be **short, engaging, and directly relevant to the slide**, keeping it in **{language}**.\n"
             "Avoid unnecessary introductions like 'Ladies and gentlemen' or 'Mesdames et messieurs' and repetitive information.\n\n"
         )
 
-        # ✅ Include previous slides for context (avoiding redundancy)
         if previous_slides:
             prompt += f"The previous slides covered (in {language}):\n"
             for i, slide in enumerate(previous_slides):
                 prompt += f"- Slide {i+1}: {slide['text']}\n"
             prompt += "\n"
 
-        # ✅ Focus only on the current slide
         prompt += (
             f"Now, generate **a short, clear, and engaging speech** ONLY for **Slide {slide_index+1}** in **{language}**:\n"
             f"{current_slide['text']}\n\n"
@@ -240,10 +213,10 @@ async def generate_speech(request: Request):
         response = requests.post(
             "http://localhost:11434/api/generate",
             json={
-                "model": "mistral",  # ✅ Ensure your AI model supports multiple languages
+                "model": "mistral",
                 "prompt": prompt,
                 "stream": False,
-                "max_tokens": 150  # ✅ Limit speech length for brevity
+                "max_tokens": 150
             }
         )
 
@@ -256,7 +229,7 @@ async def generate_speech(request: Request):
         if not generated_speech:
             return {"error": "Empty response from Mistral"}
 
-        return {"speech": generated_speech}  # ✅ Return only the speech for the current slide
+        return {"speech": generated_speech}
 
     except requests.exceptions.ConnectionError:
         return {"error": "Failed to connect to Ollama. Ensure it's running."}
@@ -264,10 +237,8 @@ async def generate_speech(request: Request):
     except Exception as e:
         return {"error": f"Unexpected error: {str(e)}"}
 
-# ========== API ROUTES ==========
 @app.get("/uploads/slides/{filename}")
 async def get_slide(filename: str):
-    """Serve slide images."""
     file_path = SLIDE_DIR / filename
     if not file_path.exists():
         raise HTTPException(status_code=404, detail="File not found.")
@@ -293,10 +264,11 @@ async def save_speech(request: Request, db: Session = Depends(get_speeches_db)):
 
     db.commit()
     return {"message": "Speech settings saved successfully!"}
+
 @app.post("/upload/")
 async def upload_file(file: UploadFile = File(...)):
     file_ext = file.filename.split(".")[-1].lower()
-    
+
     if file_ext not in ["pptx", "pdf"]:
         raise HTTPException(status_code=400, detail="Unsupported file format. Please upload a .pptx or .pdf file.")
 
@@ -331,18 +303,15 @@ async def upload_file(file: UploadFile = File(...)):
         ],
     }
 
-# ========== UPLOAD DIRECTORY SETUP ==========
 UPLOAD_DIR = Path("uploads")
 SLIDE_DIR = UPLOAD_DIR / "slides"
 UPLOAD_DIR.mkdir(exist_ok=True)
 SLIDE_DIR.mkdir(exist_ok=True)
 
 def clear_slide_directory():
-    """Clears the slide directory before processing a new file."""
     for file in SLIDE_DIR.iterdir():
         if file.is_file():
             file.unlink()
-
 
 @app.get("/get_speech")
 async def get_speech(presentation_id: str, slide_number: int, db: Session = Depends(get_speeches_db)):
