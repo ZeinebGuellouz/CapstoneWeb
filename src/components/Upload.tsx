@@ -2,50 +2,18 @@ import { useState, useRef, useEffect } from "react";
 import { Upload as UploadIcon, FileUp } from "lucide-react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { uploadFile } from "../api"; // ✅ Import API function
-import LoginModal from "./ui/LoginModal"; // ✅ Import Login Modal
-
-interface UploadProps {
-  user: string | null;  // ✅ Add user prop
-  setUser: (user: string | null) => void;
-}
-
-export function Upload({ user, setUser }: UploadProps) {// ✅ Use user from props
+import { useAuth } from "../context/AuthContext"; // ✅ Auth context
+import LoginModal from "../components/ui/LoginModal"; // ✅ Login modal
+export function Upload() {
   const [dragActive, setDragActive] = useState(false);
   const [file, setFile] = useState<File | null>(null);
   const [uploadStatus, setUploadStatus] = useState<string | null>(null);
-  const [showLoginModal, setShowLoginModal] = useState(false);
+  const [showLogin, setShowLogin] = useState(false);
+  const [triggeredUpload, setTriggeredUpload] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const navigate = useNavigate();
   const location = useLocation();
-
-  // ✅ Login Function
-  const handleLogin = async (username: string, password: string) => {
-    try {
-      const response = await fetch("http://127.0.0.1:8000/login", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username, password }),
-      });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        alert(data.detail || "Invalid username or password.");
-        return;
-      }
-
-      // ✅ Update user session
-      localStorage.setItem("authenticatedUser", username);
-      setUser(username); // ✅ Update user state in App.tsx
-      setShowLoginModal(false);
-      alert(`Login successful! Welcome, ${username}.`);
-    } catch (error) {
-      console.error("Login error:", error);
-      alert("Failed to login. Please try again.");
-    }
-  };
-
-
+  const { user } = useAuth();
 
   useEffect(() => {
     if (location.state?.scrollToUpload) {
@@ -81,22 +49,27 @@ export function Upload({ user, setUser }: UploadProps) {// ✅ Use user from pro
     }
   };
 
-  // ✅ Upload File Function
   const handleUpload = async () => {
-    if (!user) {
-      setShowLoginModal(true);
-      return;
-    }
-
     if (!file) {
       setUploadStatus("Please select a file before uploading.");
       return;
     }
 
+    if (!user) {
+      setShowLogin(true);
+      setTriggeredUpload(true);
+      return;
+    }
+
     try {
       const data = await uploadFile(file);
+      
+      
+// Send only file to backend
       setUploadStatus(`File uploaded successfully: ${data.filename}`);
-      navigate("/viewer", { state: { slides: data.slides } });
+      navigate(`/viewer?presentationId=${data.presentationId}`);
+
+      
     } catch (error) {
       console.error("Error during file upload:", error);
       setUploadStatus("Failed to upload the file. Please try again.");
@@ -163,26 +136,27 @@ export function Upload({ user, setUser }: UploadProps) {// ✅ Use user from pro
           )}
         </div>
 
-        {/* ✅ Show Login Modal when needed */}
-        {showLoginModal && <LoginModal onClose={() => setShowLoginModal(false)} onLogin={handleLogin} />}
-
-        {/* ✅ Show Logout Option */}
-        <div className="text-center mt-6">
-          {/* ✅ Show Logout Option */}
-<div className="text-center mt-6">
-
-
-  {/* ✅ Show Upload Status Message */}
-  {uploadStatus && (
-    <p className={`mt-4 text-center ${
-      uploadStatus.startsWith("File uploaded") ? "text-green-600" : "text-red-600"
-    }`}>
-      {uploadStatus}
-    </p>
-  )}
-</div>
-     </div>
+        {uploadStatus && (
+          <p className={`mt-4 text-center ${
+            uploadStatus.startsWith("File uploaded") ? "text-green-600" : "text-red-600"
+          }`}>
+            {uploadStatus}
+          </p>
+        )}
       </div>
+
+      {showLogin && (
+        <LoginModal
+          onClose={() => setShowLogin(false)}
+          onLogin={(email) => {
+            setShowLogin(false);
+            if (triggeredUpload) {
+              handleUpload();
+              setTriggeredUpload(false);
+            }
+          }}
+        />
+      )}
     </div>
   );
 }

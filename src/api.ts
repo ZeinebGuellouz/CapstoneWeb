@@ -1,86 +1,62 @@
-const API_URL = "http://127.0.0.1:8000";  
+import { collection, doc, setDoc, Timestamp } from "firebase/firestore";
+import { auth, db } from "./components/firebase/firebaseConfig";
+
+const API_URL = "http://127.0.0.1:8000";
 
 export const uploadFile = async (file: File): Promise<any> => {
-    const formData = new FormData();
-    formData.append("file", file);
-    
-    const response = await fetch(`${API_URL}/upload/`, {
-        method: "POST",
-        body: formData,
+  const user = auth.currentUser;
+  if (!user) throw new Error("User not authenticated");
+
+  const userId = user.uid;
+  const email = user.email!;
+  const token = await user.getIdToken(); // ✅ Get Firebase ID token
+  const presentationId = `${Date.now()}_${file.name.replace(/\s/g, "_")}`;
+
+  // Save user and presentation metadata to Firestore
+  const userRef = doc(db, "users", userId);
+  await setDoc(userRef, { email }, { merge: true });
+
+  const presentationRef = doc(db, "users", userId, "presentations", presentationId);
+  await setDoc(presentationRef, {
+    fileName: file.name,
+    createdAt: Timestamp.now(),
+    lastModifiedAt: Timestamp.now(),
+  });
+
+  // Prepare file upload
+  const formData = new FormData();
+  formData.append("file", file);
+
+  // ✅ Include Firebase token in the header
+  const response = await fetch(`${API_URL}/upload/`, {
+    method: "POST",
+    body: formData,
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  });
+
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({}));
+    throw new Error(err.detail || "Failed to upload file to backend");
+  }
+
+  const data = await response.json();
+
+  // Save each slide to Firestore
+  const slides = data.slides;
+  for (let i = 0; i < slides.length; i++) {
+    const slide = slides[i];
+    const slideRef = doc(db, "users", userId, "presentations", presentationId, "slides", `${i + 1}`);
+    await setDoc(slideRef, {
+      text: slide.text,
+      image: slide.image,
     });
+  }
 
-    if (!response.ok) {
-        throw new Error("Failed to upload file");
-    }
-
-    return response.json();
-};
-
-export const fetchSpeech = async (
-    presentationId: string,
-    slideNumber: number
-): Promise<{ generated_speech: string } | null> => {
-    const response = await fetch(
-        `${API_URL}/get_speech?presentation_id=${presentationId}&slide_number=${slideNumber}`
-    );
-
-    if (!response.ok) {
-        return null;
-    }
-
-    return response.json();
-};
-
-export const saveSpeech = async (
-    presentationId: string,
-    slideNumber: number,
-    speechData: { generated_speech: string; voice_tone: string; speed: number; pitch: number }
-): Promise<any> => {
-    const response = await fetch(`${API_URL}/save_speech`, {
-        method: "POST",
-        headers: {
-            "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-            presentation_id: presentationId, // ✅ Matches backend expectations
-            slide_number: slideNumber, // ✅ Matches backend expectations
-            generated_speech: speechData.generated_speech,
-            voice_tone: speechData.voice_tone,
-            speed: speechData.speed,
-            pitch: speechData.pitch,
-        }),
-    });
-
-    if (!response.ok) {
-        throw new Error("Failed to save speech");
-    }
-
-    return response.json();
-};
-
-/**
- * ✅ Improved `generateSpeech` function to:
- * - Include previous slides for better context.
- * - Generate only the speech for the current slide.
- */
-export const generateSpeech = async (
-    previousSlides: { text: string }[], // ✅ List of previous slides for context
-    currentSlide: { text: string }, // ✅ The current slide that needs speech
-    slideIndex: number // ✅ The index of the current slide
-): Promise<{ speech: string }> => {
-    const response = await fetch(`${API_URL}/generate_speech/`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-            previous_slides: previousSlides, // ✅ Send previous slides for context
-            current_slide: currentSlide, // ✅ Only generate speech for this slide
-            slide_index: slideIndex, // ✅ Ensure correct slide index is sent
-        }),
-    });
-
-    if (!response.ok) {
-        throw new Error("Failed to generate speech");
-    }
-
-    return response.json();
+  return {
+    filename: file.name,
+    slides,
+    presentationId,
+  };
 };

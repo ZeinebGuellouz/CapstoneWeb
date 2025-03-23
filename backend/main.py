@@ -1,3 +1,4 @@
+
 from fastapi import FastAPI, File, UploadFile, HTTPException, Depends, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -23,6 +24,15 @@ from fastapi import Header
 
 # ========== FASTAPI SETUP ==========
 app = FastAPI()
+
+# Directory to store slide images
+SLIDE_DIR = Path("slides")
+SLIDE_DIR.mkdir(exist_ok=True)
+
+# Directory to store uploaded files
+UPLOAD_DIR = Path("uploads")
+UPLOAD_DIR.mkdir(exist_ok=True)
+
 os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = "presentpro-b7e76-firebase-adminsdk-fbsvc-f540aa32d5.json"
 
 cred = credentials.Certificate("presentpro-b7e76-firebase-adminsdk-fbsvc-f540aa32d5.json")
@@ -264,54 +274,103 @@ async def save_speech(request: Request, db: Session = Depends(get_speeches_db)):
 
     db.commit()
     return {"message": "Speech settings saved successfully!"}
+    
+def clear_slide_directory():
+        for file in SLIDE_DIR.glob("*"):
+            file.unlink()
+
 
 @app.post("/upload/")
-async def upload_file(file: UploadFile = File(...)):
-    file_ext = file.filename.split(".")[-1].lower()
+async def upload_file(
+    file: UploadFile = File(...),
+    authorization: str = Header(...)
+):
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Missing or invalid authorization header")
+    
+    id_token = authorization.split("Bearer ")[1]
+    try:
+        decoded_token = auth.verify_id_token(id_token)
+        user_id = decoded_token["uid"]
+    except:
+        raise HTTPException(status_code=401, detail="Invalid Firebase ID token")
 
+    file_ext = file.filename.split(".")[-1].lower()
     if file_ext not in ["pptx", "pdf"]:
-        raise HTTPException(status_code=400, detail="Unsupported file format. Please upload a .pptx or .pdf file.")
+        raise HTTPException(status_code=400, detail="Unsupported file format")
 
     file_path = UPLOAD_DIR / file.filename
     with file_path.open("wb") as buffer:
         shutil.copyfileobj(file.file, buffer)
 
-    clear_slide_directory()
-
-    slide_images = []
-    slide_texts = []
-
+        clear_slide_directory()
+    
+   
     try:
         if file_ext == "pptx":
             slide_images = process_pptx(file_path)
             slide_texts = extract_text_from_pptx(file_path)
-        elif file_ext == "pdf":
+        else:
             slide_images = process_pdf(file_path)
             slide_texts = extract_text_from_pdf(file_path)
     except Exception as e:
-        print(f"Error processing file: {e}")
-        raise HTTPException(status_code=500, detail="An error occurred while processing the file.")
+        raise HTTPException(status_code=500, detail=f"Processing failed: {e}")
 
     if not slide_images:
-        raise HTTPException(status_code=500, detail="No slides were extracted. Please check the file format.")
+        raise HTTPException(status_code=500, detail="No slides extracted")
+
+    # ✅ Save presentation and slides to Firestore
+    presentation_id = f"{int(file_path.stat().st_mtime * 1000)}_{file.filename.replace(' ', '_')}"
+
+    presentation_doc = db.collection("users").document(user_id).collection("presentations").document(presentation_id)
+    presentation_doc.set({
+        "fileName": file.filename,
+        "createdAt": firestore.SERVER_TIMESTAMP,
+    })
+
+    slides_collection = presentation_doc.collection("slides")
+    for idx, (img_path, text) in enumerate(zip(slide_images, slide_texts), start=1):
+        slides_collection.document(str(idx)).set({
+            "slideNumber": idx,
+            "text": text,
+            "image": f"http://127.0.0.1:8000{img_path}"
+        })
 
     return {
+        "presentationId": presentation_id,
         "filename": file.filename,
         "slides": [
             {"image": f"http://127.0.0.1:8000{path}", "text": text}
             for path, text in zip(slide_images, slide_texts)
-        ],
+        ]
     }
 
-UPLOAD_DIR = Path("uploads")
-SLIDE_DIR = UPLOAD_DIR / "slides"
-UPLOAD_DIR.mkdir(exist_ok=True)
-SLIDE_DIR.mkdir(exist_ok=True)
+@app.get("/my_presentations")
+async def get_user_presentations(authorization: str = Header(...)):
+    if not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Invalid auth header")
 
-def clear_slide_directory():
-    for file in SLIDE_DIR.iterdir():
-        if file.is_file():
-            file.unlink()
+    id_token = authorization.split("Bearer ")[1]
+    try:
+        decoded_token = auth.verify_id_token(id_token)
+        user_id = decoded_token["uid"]
+    except:
+        raise HTTPException(status_code=401, detail="Invalid Firebase ID token")
+
+    presentations_ref = db.collection("users").document(user_id).collection("presentations")
+    presentations = presentations_ref.stream()
+
+    result = []
+    for doc in presentations:
+        data = doc.to_dict()
+        result.append({
+            "id": doc.id,
+            "fileName": data.get("fileName"),
+            "createdAt": data.get("createdAt")
+        })
+
+    return result
+
 
 @app.get("/get_speech")
 async def get_speech(presentation_id: str, slide_number: int, db: Session = Depends(get_speeches_db)):

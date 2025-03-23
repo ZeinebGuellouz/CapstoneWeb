@@ -5,6 +5,10 @@ import SlideNavigation from "./SlideNavigation";
 import SpeechEditor from "./SpeechEditor";
 import SpeechControls from "./SpeechControls";
 import { Slide } from "../types"; // Ensure the correct Slide type is imported
+import { getAuth } from "firebase/auth";
+import { collection, getDocs, doc } from "firebase/firestore";
+import { db } from "./firebase/firebaseConfig"; 
+
 
 export function ShowSlide() {
   const [slides, setSlides] = useState<Slide[]>([]);
@@ -13,23 +17,53 @@ export function ShowSlide() {
   const slideContainerRef = useRef<HTMLDivElement>(null);
   const navigate = useNavigate();
   const location = useLocation();
+  const queryParams = new URLSearchParams(location.search);
+  const presentationId = queryParams.get("presentationId"); // ✅
   const [speeches, setSpeeches] = useState<{ [key: number]: string }>({});
 
   useEffect(() => {
-    if (location.state?.slides) {
-      const formattedSlides = location.state.slides.map((slide: any, index: number) => ({
-        presentationId: location.state.presentationId || "default_presentation_id", // Provide a default ID if missing
-        slideNumber: index + 1, // Assign slide numbers sequentially
-        text: slide.text || "",
-        image: slide.image || "",
-      }));
+    const fetchSlidesFromFirestore = async () => {
+      const auth = getAuth();
+      const user = auth.currentUser;
+      const queryParams = new URLSearchParams(location.search);
+      const presentationId = queryParams.get("presentationId");
   
-      setSlides(formattedSlides);
-      setCurrentSlideIndex(0);
-    } else {
-      setSlides([]);
-    }
-  }, [location.state]);
+      if (!user || !presentationId) {
+        console.error("Missing user or presentation ID");
+        return;
+      }
+  
+      try {
+        const slidesRef = collection(
+          doc(db, "users", user.uid, "presentations", presentationId),
+          "slides"
+        );
+  
+        const snapshot = await getDocs(slidesRef);
+        const slideDocs = snapshot.docs
+          .map((doc) => ({
+            slideNumber: parseInt(doc.id),
+            ...doc.data(),
+          }))
+          .sort((a, b) => a.slideNumber - b.slideNumber);
+  
+        const formattedSlides: Slide[] = slideDocs.map((slide: any) => ({
+          presentationId,
+          slideNumber: slide.slideNumber,
+          text: slide.text || "",
+          image: slide.image || "",
+          title: slide.title || "Untitled Slide",
+        }));
+  
+        setSlides(formattedSlides);
+        setCurrentSlideIndex(0);
+      } catch (error) {
+        console.error("Failed to fetch slides from Firestore:", error);
+      }
+    };
+  
+    fetchSlidesFromFirestore();
+  }, [location.search]);
   
 
   const currentSlide = slides[currentSlideIndex];
@@ -185,17 +219,22 @@ export function ShowSlide() {
           </div>
 
           {/* Speech Editor */}
-          {currentSlide && (
-            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-lg p-6">
-              <SpeechEditor
-                   slide={currentSlide}
-                   slides={slides}
-                   slideIndex={currentSlideIndex}
-                   speeches={speeches}
-                   setSpeeches={setSpeeches}
-                />
-            </div>
-          )}
+          {currentSlide && presentationId && (
+  <div className="bg-white dark:bg-gray-800 rounded-lg shadow-lg p-6">
+    <SpeechEditor
+      slide={currentSlide}
+      slides={slides}
+      slideIndex={currentSlideIndex}
+      speeches={speeches}
+      setSpeeches={setSpeeches}
+      voiceTone="default"
+      speed={1}
+      pitch={1}
+      presentationId={presentationId} // ✅ this line is now safe
+    />
+  </div>
+)}
+
         </div>
 
         {/* Right Panel – Speech Customization & Controls */}

@@ -4,6 +4,19 @@ export interface NavItem {
 }
 
 
+// Define and export the User type
+
+export interface User {
+
+  id: string;
+
+  name: string;
+
+  email: string;
+
+
+}
+
 export interface Slide {
   image: string;
   text: string;

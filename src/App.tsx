@@ -1,32 +1,18 @@
 import { Routes, Route, useLocation, useNavigate } from "react-router-dom";
-import { useState, useEffect } from "react";
+import { useAuth } from "./context/AuthContext"; // Import Auth Context
 import { Navigation } from "./components/Navigation";
 import { Hero } from "./components/Hero";
 import { Features } from "./components/Features";
 import { Upload } from "./components/Upload";
 import { Contact } from "./components/Contact";
 import { ShowSlide } from "./components/ShowSlide";
+import ViewPresentations from "./components/ViewPresentations";
 
 function App() {
   const location = useLocation();
   const navigate = useNavigate();
+  const { user, logout } = useAuth();
 
-  // ✅ Track User Session
-  const [user, setUser] = useState<string | null>(localStorage.getItem("authenticatedUser"));
-
-  // ✅ Persist login state on refresh
-  useEffect(() => {
-    setUser(localStorage.getItem("authenticatedUser"));
-  }, []);
-
-  // ✅ Handle logout
-  const handleLogout = () => {
-    localStorage.removeItem("authenticatedUser"); // Remove session
-    setUser(null); // Update state
-    navigate("/"); // Redirect to home
-  };
-
-  // ✅ Navigate and scroll to upload section
   const navigateToUpload = () => {
     if (location.pathname !== "/") {
       navigate("/");
@@ -43,10 +29,9 @@ function App() {
       <Navigation
         isViewerPage={location.pathname === "/viewer"}
         navigateToUpload={navigateToUpload}
-        user={user} // ✅ Pass user state
-        onLogout={handleLogout} // ✅ Pass logout function
+        user={user}
+        onLogout={logout}
       />
-
       <main className="relative">
         <Routes>
           <Route
@@ -55,7 +40,7 @@ function App() {
               <>
                 <Hero />
                 <Features />
-                <Upload user={user} setUser={setUser} />  {/* ✅ Pass setUser to Upload */}
+                <Upload />
                 <Contact />
               </>
             }
@@ -72,6 +57,7 @@ function App() {
               )
             }
           />
+          <Route path="/my-presentations" element={<ViewPresentations />} />
         </Routes>
       </main>
     </div>

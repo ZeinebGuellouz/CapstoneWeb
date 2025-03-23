@@ -1,5 +1,7 @@
 import { useState, useEffect } from "react";
 import { Slide } from "@/types";
+import { db, auth } from "@/components/firebase/firebaseConfig";
+import { doc, setDoc } from "firebase/firestore";
 
 interface SpeechEditorProps {
   slide: Slide;
@@ -10,6 +12,7 @@ interface SpeechEditorProps {
   voiceTone: string;
   speed: number;
   pitch: number;
+  presentationId: string; // ✅ NEW
 }
 
 export default function SpeechEditor({
@@ -21,14 +24,30 @@ export default function SpeechEditor({
   voiceTone,
   speed,
   pitch,
+  presentationId, // ✅ NEW
 }: SpeechEditorProps) {
   const [speech, setSpeech] = useState<string>(speeches[slideIndex] || slide.text || "");
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
 
+  const user = auth.currentUser;
+  const userId = user?.uid;
+
   useEffect(() => {
     setSpeech(speeches[slideIndex] || slide.text || "");
   }, [slideIndex, speeches, slide.text]);
+
+  // ✅ Save to Firestore
+  const saveToFirestore = async (text: string) => {
+    if (!userId || !presentationId) return;
+    const slideRef = doc(db, "users", userId, "presentations", presentationId, "slides", `${slideIndex + 1}`);
+    await setDoc(slideRef, {
+      generated_speech: text,
+      voice_tone: voiceTone,
+      speed,
+      pitch,
+    }, { merge: true });
+  };
 
   const regenerateSpeech = async () => {
     setLoading(true);
@@ -61,11 +80,8 @@ export default function SpeechEditor({
       }
 
       setSpeech(data.speech);
-
-      setSpeeches((prev) => ({
-        ...prev,
-        [slideIndex]: data.speech,
-      }));
+      setSpeeches((prev) => ({ ...prev, [slideIndex]: data.speech }));
+      await saveToFirestore(data.speech); // ✅ Save to Firestore
     } catch (error) {
       console.error("❌ Error generating speech:", error);
       setSpeech("[Failed to generate speech]");
@@ -73,6 +89,13 @@ export default function SpeechEditor({
     } finally {
       setLoading(false);
     }
+  };
+
+  // ✅ Save manual edits too
+  const handleManualEdit = async (value: string) => {
+    setSpeech(value);
+    setSpeeches((prev) => ({ ...prev, [slideIndex]: value }));
+    await saveToFirestore(value);
   };
 
   return (
@@ -83,7 +106,7 @@ export default function SpeechEditor({
 
       <textarea
         value={speech}
-        onChange={(e) => setSpeech(e.target.value)}
+        onChange={(e) => handleManualEdit(e.target.value)}
         className="w-full h-36 p-3 border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-gray-100 rounded-md shadow-sm focus:ring-2 focus:ring-blue-500 transition-all resize-none"
         placeholder="Type or edit AI-generated speech..."
       />
