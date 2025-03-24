@@ -1,82 +1,95 @@
 import { useEffect, useState } from "react";
-import { getAuth } from "firebase/auth";
+import { getAuth, onAuthStateChanged, User } from "firebase/auth";
+import { useNavigate } from "react-router-dom";
 
-interface Presentation {
+type Presentation = {
   id: string;
   fileName: string;
-  createdAt?: { seconds: number };
-}
+  createdAt?: {
+    _seconds?: number;
+  };
+};
 
-export default function ViewPresentations() {
+function ViewPresentations() {
   const [presentations, setPresentations] = useState<Presentation[]>([]);
   const [loading, setLoading] = useState(true);
+  const [user, setUser] = useState<User | null>(null);
+
+  const auth = getAuth();
+  const navigate = useNavigate();
 
   useEffect(() => {
-    const fetchPresentations = async () => {
-      const auth = getAuth();
-      const user = auth.currentUser;
-      if (!user) return;
+    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
+      if (!firebaseUser) {
+        console.warn("User not logged in.");
+        navigate("/login");
+        return;
+      }
 
-      const idToken = await user.getIdToken(); // 🔐 get token
+      setUser(firebaseUser);
+      const token = await firebaseUser.getIdToken();
 
       try {
-        const response = await fetch("http://127.0.0.1:8000/my_presentations", {
+        const res = await fetch("http://127.0.0.1:8000/my_presentations", {
           headers: {
-            Authorization: `Bearer ${idToken}`,
+            Authorization: `Bearer ${token}`,
           },
         });
 
-        if (!response.ok) {
-          throw new Error("Failed to fetch presentations");
-        }
+        if (!res.ok) throw new Error("Failed to fetch presentations");
 
-        const data = await response.json();
+        const data = await res.json();
         setPresentations(data);
-      } catch (error) {
-        console.error("Error fetching presentations:", error);
+      } catch (err) {
+        console.error("Error fetching presentations:", err);
       } finally {
         setLoading(false);
       }
-    };
+    });
 
-    fetchPresentations();
-  }, []);
+    return () => unsubscribe();
+  }, [auth, navigate]);
 
   return (
-    <div className="max-w-4xl mx-auto py-12">
-      <h2 className="text-2xl font-semibold text-center mb-6">
-        Your Presentations
-      </h2>
+    <div className="pt-20 px-10 min-h-screen bg-gray-50">
+      <h2 className="text-2xl font-bold mb-6 text-center text-primary">Your Presentations</h2>
+
       {loading ? (
-        <p className="text-center">Loading...</p>
+        <p className="text-center text-gray-500">Loading...</p>
       ) : presentations.length === 0 ? (
         <p className="text-center text-gray-500">No presentations found.</p>
       ) : (
-        <ul className="space-y-4">
-          {presentations.map((pres) => (
-            <li
-              key={pres.id}
-              className="p-4 border rounded-md shadow-sm flex justify-between items-center"
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {presentations.map((presentation) => (
+            <div
+              key={presentation.id}
+              className="bg-white shadow-md rounded-lg p-6 flex flex-col justify-between"
             >
               <div>
-                <p className="font-medium text-lg">{pres.fileName}</p>
-                {pres.createdAt && (
-                  <p className="text-sm text-gray-500">
-                    Uploaded on{" "}
-                    {new Date(pres.createdAt.seconds * 1000).toLocaleString()}
-                  </p>
-                )}
+                <h3 className="text-lg font-semibold text-gray-800 truncate">
+                  {presentation.fileName}
+                </h3>
+                <p className="text-sm text-gray-500 mt-2">
+                 {presentation.createdAt
+                   ? typeof presentation.createdAt === "object" && "seconds" in presentation.createdAt
+                   ? new Date((presentation.createdAt as any).seconds * 1000).toLocaleString()
+                   : new Date(presentation.createdAt as any).toLocaleString()
+                   : "Upload date unknown"}
+                </p>
+
               </div>
-              <a
-                href={`/viewer?presentationId=${pres.id}`}
-                className="text-blue-600 hover:underline text-sm"
+              <button
+                onClick={() => navigate(`/viewer?presentationId=${presentation.id}`)}
+                className="mt-4 bg-primary hover:bg-primary/90 text-white py-2 px-4 rounded-md transition"
               >
                 View
-              </a>
-            </li>
+              </button>
+            </div>
           ))}
-        </ul>
+        </div>
       )}
     </div>
   );
 }
+
+export default ViewPresentations;

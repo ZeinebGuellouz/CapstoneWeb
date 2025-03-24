@@ -5,7 +5,7 @@ import SlideNavigation from "./SlideNavigation";
 import SpeechEditor from "./SpeechEditor";
 import SpeechControls from "./SpeechControls";
 import { Slide } from "../types"; // Ensure the correct Slide type is imported
-import { getAuth } from "firebase/auth";
+import { getAuth,onAuthStateChanged } from "firebase/auth";
 import { collection, getDocs, doc } from "firebase/firestore";
 import { db } from "./firebase/firebaseConfig"; 
 
@@ -22,9 +22,9 @@ export function ShowSlide() {
   const [speeches, setSpeeches] = useState<{ [key: number]: string }>({});
 
   useEffect(() => {
-    const fetchSlidesFromFirestore = async () => {
-      const auth = getAuth();
-      const user = auth.currentUser;
+    const auth = getAuth();
+  
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
       const queryParams = new URLSearchParams(location.search);
       const presentationId = queryParams.get("presentationId");
   
@@ -60,11 +60,10 @@ export function ShowSlide() {
       } catch (error) {
         console.error("Failed to fetch slides from Firestore:", error);
       }
-    };
+    });
   
-    fetchSlidesFromFirestore();
+    return () => unsubscribe(); // Cleanup listener on unmount
   }, [location.search]);
-  
 
   const currentSlide = slides[currentSlideIndex];
 
