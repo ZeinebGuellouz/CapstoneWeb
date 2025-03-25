@@ -1,4 +1,5 @@
 import { ArrowRight } from 'lucide-react';
+import { useEffect } from 'react';
 
 export function Hero() {
   const scrollToUpload = () => {
@@ -14,6 +15,17 @@ export function Hero() {
       });
     }
   };
+  useEffect(() => {
+    const target = sessionStorage.getItem("scrollTo");
+    if (target) {
+      const el = document.getElementById(target);
+      if (el) {
+        el.scrollIntoView({ behavior: "smooth" });
+      }
+      sessionStorage.removeItem("scrollTo");
+    }
+  }, []);
+  
 
   return (
     <div id="hero" className="relative bg-white overflow-hidden pt-16">

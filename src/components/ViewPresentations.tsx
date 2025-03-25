@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { getAuth, onAuthStateChanged, User } from "firebase/auth";
 import { useNavigate } from "react-router-dom";
 import { toast } from "react-toastify";
-import { FaPlus, FaSearch, FaTimes } from "react-icons/fa";
+import { FaSearch, FaTimes } from "react-icons/fa";
 
 type Presentation = {
   id: string;
@@ -10,6 +10,7 @@ type Presentation = {
   createdAt?: {
     _seconds?: number;
   };
+  thumbnailUrl?: string;
 };
 
 function ViewPresentations() {
@@ -18,6 +19,7 @@ function ViewPresentations() {
   const [loading, setLoading] = useState(true);
   const [user, setUser] = useState<User | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
+  const [hoveredThumbnail, setHoveredThumbnail] = useState<string | null>(null);
 
   const auth = getAuth();
   const navigate = useNavigate();
@@ -121,18 +123,6 @@ function ViewPresentations() {
 
   return (
     <div className="pt-20 px-6 md:px-10 min-h-screen bg-gray-50">
-      <div className="flex flex-col sm:flex-row sm:justify-between items-center gap-4 mb-6">
-        <h2 className="text-3xl font-bold text-primary text-center sm:text-left">
-          Your Presentations
-        </h2>
-        <button
-          onClick={() => navigate("/upload")}
-          className="flex items-center gap-2 bg-green-600 hover:bg-green-700 text-white py-2 px-4 rounded transition"
-        >
-          <FaPlus /> Upload New Presentation
-        </button>
-      </div>
-
       <div className="flex items-center justify-center gap-2 mb-4 max-w-xl mx-auto">
         <div className="relative w-full">
           <FaSearch className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
@@ -187,9 +177,23 @@ function ViewPresentations() {
                 selected.has(presentation.id) ? "ring-2 ring-red-400" : ""
               }`}
             >
-              {/* Fake thumbnail */}
-              <div className="h-36 bg-gray-100 rounded mb-3 flex items-center justify-center text-gray-400 text-sm">
-                Preview Thumbnail
+              {/* ✅ Real thumbnail with hover preview */}
+              <div
+                className="relative h-36 rounded overflow-hidden mb-3 border bg-gray-100"
+                onMouseEnter={() => setHoveredThumbnail(presentation.thumbnailUrl || null)}
+                onMouseLeave={() => setHoveredThumbnail(null)}
+              >
+                {presentation.thumbnailUrl ? (
+                  <img
+                    src={presentation.thumbnailUrl}
+                    alt="Thumbnail"
+                    className="w-full h-full object-cover"
+                  />
+                ) : (
+                  <span className="flex items-center justify-center h-full text-gray-400 text-sm">
+                    No Preview
+                  </span>
+                )}
               </div>
 
               <label
@@ -232,6 +236,17 @@ function ViewPresentations() {
                   Delete
                 </button>
               </div>
+
+              {/* Floating preview on hover */}
+              {hoveredThumbnail === presentation.thumbnailUrl && (
+                <div className="absolute z-50 top-0 left-full ml-4 w-64 h-auto shadow-lg border rounded bg-white p-2">
+                  <img
+                    src={presentation.thumbnailUrl || ""}
+                    alt="Thumbnail preview"
+                    className="w-full h-auto rounded"
+                  />
+                </div>
+              )}
             </div>
           ))}
         </div>

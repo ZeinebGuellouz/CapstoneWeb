@@ -306,8 +306,7 @@ async def upload_file(
         shutil.copyfileobj(file.file, buffer)
 
         clear_slide_directory()
-    
-   
+
     try:
         if file_ext == "pptx":
             slide_images = process_pptx(file_path)
@@ -321,13 +320,21 @@ async def upload_file(
     if not slide_images:
         raise HTTPException(status_code=500, detail="No slides extracted")
 
-    # ✅ Save presentation and slides to Firestore
+    # ✅ Generate unique ID
     presentation_id = f"{int(file_path.stat().st_mtime * 1000)}_{file.filename.replace(' ', '_')}"
 
+    # ✅ Save first slide as thumbnail
+    first_slide_path = SLIDE_DIR / slide_images[0].split("/")[-1]
+    thumbnail_filename = f"{presentation_id}_1.png"
+    thumbnail_path = SLIDE_DIR / thumbnail_filename
+    shutil.copy(first_slide_path, thumbnail_path)
+
+    # ✅ Save metadata to Firestore
     presentation_doc = db.collection("users").document(user_id).collection("presentations").document(presentation_id)
     presentation_doc.set({
         "fileName": file.filename,
         "createdAt": firestore.SERVER_TIMESTAMP,
+        "thumbnailUrl": f"http://127.0.0.1:8000/uploads/slides/{thumbnail_filename}"
     })
 
     slides_collection = presentation_doc.collection("slides")
@@ -346,7 +353,6 @@ async def upload_file(
             for path, text in zip(slide_images, slide_texts)
         ]
     }
-
 @app.get("/my_presentations")
 async def get_user_presentations(authorization: str = Header(...)):
     if not authorization.startswith("Bearer "):
@@ -365,13 +371,20 @@ async def get_user_presentations(authorization: str = Header(...)):
     result = []
     for doc in presentations:
         data = doc.to_dict()
+        presentation_id = doc.id
+
+        # Build thumbnail URL from the first slide of each presentation
+        thumbnail_url = f"http://127.0.0.1:8000/uploads/slides/{presentation_id}_1.png"
+
         result.append({
-            "id": doc.id,
+            "id": presentation_id,
             "fileName": data.get("fileName"),
-            "createdAt": data.get("createdAt")
+            "createdAt": data.get("createdAt"),
+            "thumbnailUrl": thumbnail_url
         })
 
     return result
+
 
 @app.delete("/delete_presentation")
 async def delete_presentation(

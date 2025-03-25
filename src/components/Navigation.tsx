@@ -46,19 +46,30 @@ export function Navigation({ isViewerPage, navigateToUpload, onUploadClick, user
                   Home
                 </button>
                 <button
-                  onClick={() => document.getElementById("features")?.scrollIntoView({ behavior: "smooth" })}
+                onClick={() => {
+                 sessionStorage.setItem("scrollTo", "features");
+                 window.location.href = "/";
+                }}
                   className="text-gray-600 hover:text-gray-900 px-3 py-2 rounded-md text-sm font-medium cursor-pointer"
                 >
                   Features
                 </button>
                 <button
-                  onClick={() => document.getElementById("upload")?.scrollIntoView({ behavior: "smooth" })}
+                 onClick={() => {
+                  sessionStorage.setItem("scrollTo", "upload");
+                  window.location.href = "/";
+                }}
+                
                   className="text-gray-600 hover:text-gray-900 px-3 py-2 rounded-md text-sm font-medium cursor-pointer"
                 >
                   Upload
                 </button>
                 <button
-                  onClick={() => document.getElementById("contact")?.scrollIntoView({ behavior: "smooth" })}
+                  onClick={() => {
+                    sessionStorage.setItem("scrollTo", "contact");
+                    window.location.href = "/";
+                  }}
+                  
                   className="text-gray-600 hover:text-gray-900 px-3 py-2 rounded-md text-sm font-medium cursor-pointer"
                 >
                   Contact
