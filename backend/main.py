@@ -12,14 +12,12 @@ import comtypes.client
 from pptx import Presentation
 from pdf2image import convert_from_path
 import pdfplumber
-from sqlalchemy import create_engine, Column, Integer, String, Float
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker, Session
 from pydantic import BaseModel
 import requests
 import firebase_admin
 from firebase_admin import credentials, auth, firestore
-from fastapi import Header
+from fastapi import Header , Query
+
 
 
 # ========== FASTAPI SETUP ==========
@@ -94,26 +92,14 @@ def reset_password(email: str):
     except firebase_admin.exceptions.FirebaseError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
-# ========== DATABASE SETUP ==========
-SPEECHES_DATABASE_URL = "sqlite:///./speeches.db"
-speeches_engine = create_engine(SPEECHES_DATABASE_URL, connect_args={"check_same_thread": False})
-SpeechesSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=speeches_engine)
-SpeechesBase = declarative_base()
-
-# ========== SPEECHES DATABASE MODEL ==========
-class Speech(SpeechesBase):
-    __tablename__ = "speeches"
-
-    id = Column(Integer, primary_key=True, index=True)
-    presentation_id = Column(String, index=True)
-    slide_number = Column(Integer, index=True)
-    generated_speech = Column(String)
-    voice_tone = Column(String, default="Formal")
-    speed = Column(Float, default=1.0)
-    pitch = Column(Float, default=1.0)
-SpeechesBase.metadata.create_all(bind=speeches_engine)
 
 # ========== DATABASE DEPENDENCIES ==========
+
+def clear_slide_directory():
+    for file in SLIDE_DIR.iterdir():
+        if file.is_file():
+            file.unlink()
+
 def process_pdf(file_path: Path) -> List[str]:
     try:
         slides = convert_from_path(file_path, dpi=150, output_folder=SLIDE_DIR, fmt="png")
@@ -171,12 +157,7 @@ def process_pptx(file_path: Path) -> List[str]:
         print(f"Error processing PPTX: {e}")
         return []
 
-def get_speeches_db():
-    db = SpeechesSessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
+
 
 # ========== Pydantic Models ==========
 class SpeechRequest(BaseModel):
@@ -255,29 +236,50 @@ async def get_slide(filename: str):
     return FileResponse(file_path, headers={"Cache-Control": "no-cache, no-store, must-revalidate"})
 
 @app.post("/save_speech")
-async def save_speech(request: Request, db: Session = Depends(get_speeches_db)):
+async def save_speech(request: Request, authorization: str = Header(...)):
+    if not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Missing or invalid authorization header")
+
+    id_token = authorization.split("Bearer ")[1]
+    try:
+        decoded_token = auth.verify_id_token(id_token)
+        user_id = decoded_token["uid"]
+    except:
+        raise HTTPException(status_code=401, detail="Invalid Firebase ID token")
+
     body = await request.json()
-    speech = SpeechRequest(**body)
 
-    existing_speech = db.query(Speech).filter(
-        Speech.presentation_id == speech.presentation_id,
-        Speech.slide_number == speech.slide_number
-    ).first()
+    presentation_id = body.get("presentation_id")
+    slide_number = str(body.get("slide_number"))
 
-    if existing_speech:
-        existing_speech.generated_speech = speech.generated_speech
-        existing_speech.voice_tone = speech.voice_tone
-        existing_speech.speed = speech.speed
-        existing_speech.pitch = speech.pitch
-    else:
-        db.add(Speech(**speech.dict()))
+    if not presentation_id or not slide_number:
+        raise HTTPException(status_code=400, detail="Missing presentation ID or slide number")
 
-    db.commit()
-    return {"message": "Speech settings saved successfully!"}
-    
-def clear_slide_directory():
-        for file in SLIDE_DIR.glob("*"):
-            file.unlink()
+    slide_ref = (
+        db.collection("users")
+        .document(user_id)
+        .collection("presentations")
+        .document(presentation_id)
+        .collection("slides")
+        .document(slide_number)
+    )
+
+    # ✅ Update speech, pitch, tone, text (optional), and lastModifiedAt
+    update_data = {
+        "speech": body.get("generated_speech"),
+        "pitch": body.get("pitch", 1.0),
+        "speed": body.get("speed", 1.0),
+        "tone": body.get("voice_tone", "Formal"),
+        "text": body.get("text"),  # optional if user edited it
+        "lastModifiedAt": firestore.SERVER_TIMESTAMP
+    }
+
+    # Remove any None values
+    update_data = {k: v for k, v in update_data.items() if v is not None}
+
+    slide_ref.update(update_data)
+    return {"message": "Speech data saved successfully to Firestore"}
+
 
 
 @app.post("/upload/")
@@ -371,15 +373,74 @@ async def get_user_presentations(authorization: str = Header(...)):
 
     return result
 
+@app.delete("/delete_presentation")
+async def delete_presentation(
+    presentation_id: str = Query(...),
+    authorization: str = Header(...)
+):
+    if not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Invalid auth header")
 
-@app.get("/get_speech")
-async def get_speech(presentation_id: str, slide_number: int, db: Session = Depends(get_speeches_db)):
-    speech = db.query(Speech).filter(
-        Speech.presentation_id == presentation_id,
-        Speech.slide_number == slide_number
-    ).first()
+    id_token = authorization.split("Bearer ")[1]
+    try:
+        decoded_token = auth.verify_id_token(id_token)
+        user_id = decoded_token["uid"]
+    except:
+        raise HTTPException(status_code=401, detail="Invalid Firebase ID token")
 
-    return speech if speech else {"generated_speech": "", "voice_tone": "Formal", "speed": 1.0, "pitch": 1.0}
+    try:
+        presentation_ref = (
+            db.collection("users")
+            .document(user_id)
+            .collection("presentations")
+            .document(presentation_id)
+        )
+
+        # Delete all slides in the subcollection
+        slides = presentation_ref.collection("slides").stream()
+        for slide in slides:
+            slide.reference.delete()
+
+        # Delete the presentation document
+        presentation_ref.delete()
+
+        return {"message": "Presentation deleted successfully"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+class BatchDeleteRequest(BaseModel):
+    presentation_ids: List[str]
+
+@app.post("/delete_presentations_batch")
+async def delete_presentations_batch(
+    request: BatchDeleteRequest,
+    authorization: str = Header(...)
+):
+    if not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Invalid auth header")
+
+    id_token = authorization.split("Bearer ")[1]
+    try:
+        decoded_token = auth.verify_id_token(id_token)
+        user_id = decoded_token["uid"]
+    except:
+        raise HTTPException(status_code=401, detail="Invalid Firebase ID token")
+
+    try:
+        for pid in request.presentation_ids:
+            pres_ref = db.collection("users").document(user_id).collection("presentations").document(pid)
+
+            # Delete all slides
+            slides = pres_ref.collection("slides").stream()
+            for slide in slides:
+                slide.reference.delete()
+
+            # Delete the presentation itself
+            pres_ref.delete()
+
+        return {"message": "Batch deletion successful"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 
 @app.get("/")
 def root():

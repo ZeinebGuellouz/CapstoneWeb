@@ -20,7 +20,10 @@ export function ShowSlide() {
   const queryParams = new URLSearchParams(location.search);
   const presentationId = queryParams.get("presentationId"); // ✅
   const [speeches, setSpeeches] = useState<{ [key: number]: string }>({});
-
+  const [voiceTone, setVoiceTone] = useState("Formal");
+  const [speed, setSpeed] = useState(1);
+  const [pitch, setPitch] = useState(1);
+  
   useEffect(() => {
     const auth = getAuth();
   
@@ -47,13 +50,15 @@ export function ShowSlide() {
           }))
           .sort((a, b) => a.slideNumber - b.slideNumber);
   
-        const formattedSlides: Slide[] = slideDocs.map((slide: any) => ({
-          presentationId,
-          slideNumber: slide.slideNumber,
-          text: slide.text || "",
-          image: slide.image || "",
-          title: slide.title || "Untitled Slide",
-        }));
+          const formattedSlides: Slide[] = slideDocs.map((slide: any) => ({
+            presentationId,
+            slideNumber: slide.slideNumber,
+            text: slide.generated_speech || slide.text || "", // ✅ override if available
+            image: slide.image || "",
+            title: slide.title || "Untitled Slide",
+          }));
+          
+          
   
         setSlides(formattedSlides);
         setCurrentSlideIndex(0);
@@ -61,7 +66,7 @@ export function ShowSlide() {
         console.error("Failed to fetch slides from Firestore:", error);
       }
     });
-  
+    
     return () => unsubscribe(); // Cleanup listener on unmount
   }, [location.search]);
 
@@ -221,16 +226,17 @@ export function ShowSlide() {
           {currentSlide && presentationId && (
   <div className="bg-white dark:bg-gray-800 rounded-lg shadow-lg p-6">
     <SpeechEditor
-      slide={currentSlide}
-      slides={slides}
-      slideIndex={currentSlideIndex}
-      speeches={speeches}
-      setSpeeches={setSpeeches}
-      voiceTone="default"
-      speed={1}
-      pitch={1}
-      presentationId={presentationId} // ✅ this line is now safe
-    />
+  slide={currentSlide}
+  slides={slides}
+  slideIndex={currentSlideIndex}
+  speeches={speeches}
+  setSpeeches={setSpeeches}
+  voiceTone={voiceTone}
+  speed={speed}
+  pitch={pitch}
+  presentationId={presentationId}
+/>
+
   </div>
 )}
 
@@ -242,7 +248,16 @@ export function ShowSlide() {
             <h2 className="font-semibold text-lg text-gray-900 dark:text-gray-100">Speech Controls</h2>
           </div>
           <div className="p-4">
-            {currentSlide && <SpeechControls slide={currentSlide} />}
+            {currentSlide && <SpeechControls
+  slide={currentSlide}
+  setVoiceTone={setVoiceTone}
+  setSpeed={setSpeed}
+  setPitch={setPitch}
+  voiceTone={voiceTone}
+  speed={speed}
+  pitch={pitch}
+  speeches={speeches}
+ />}
 
           </div>
         </div>

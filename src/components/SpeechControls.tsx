@@ -1,4 +1,6 @@
 import { useState, useEffect } from "react";
+import { auth, db } from "@/components/firebase/firebaseConfig";
+import { doc, getDoc } from "firebase/firestore";
 
 interface SpeechControlsProps {
   slide?: {
@@ -6,12 +8,13 @@ interface SpeechControlsProps {
     slideNumber: number;
     text: string;
   };
-  setVoiceTone?: (tone: string) => void; // ✅ Make optional to prevent errors
-  setSpeed?: (speed: number) => void; 
+  setVoiceTone?: (tone: string) => void;
+  setSpeed?: (speed: number) => void;
   setPitch?: (pitch: number) => void;
-  voiceTone?: string; // ✅ Allow optional values
+  voiceTone?: string;
   speed?: number;
   pitch?: number;
+  speeches?: { [key: number]: string };
 }
 
 export default function SpeechControls({
@@ -19,33 +22,43 @@ export default function SpeechControls({
   setVoiceTone,
   setSpeed,
   setPitch,
-  voiceTone = "Formal",  // ✅ Default value
-  speed = 1,            // ✅ Prevent undefined errors
+  voiceTone = "Formal",
+  speed = 1,
   pitch = 1,
+  speeches = {},
 }: SpeechControlsProps) {
   const [loading, setLoading] = useState(true);
   const [status, setStatus] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!slide) return; // ✅ Prevents undefined slide errors
+    if (!slide) return;
 
     const fetchSpeechSettings = async () => {
       setLoading(true);
       try {
-        const response = await fetch(
-          `http://127.0.0.1:8000/get_speech?presentation_id=${slide.presentationId}&slide_number=${slide.slideNumber}`
+        const user = auth.currentUser;
+        if (!user) throw new Error("User not authenticated");
+
+        const userId = user.uid;
+        const slideRef = doc(
+          db,
+          "users",
+          userId,
+          "presentations",
+          slide.presentationId,
+          "slides",
+          String(slide.slideNumber)
         );
 
-        if (!response.ok) {
-          throw new Error("Failed to fetch speech settings");
-        }
+        const snapshot = await getDoc(slideRef);
+        if (!snapshot.exists()) throw new Error("Slide data not found");
 
-        const data = await response.json();
-        setVoiceTone?.(data.voice_tone ?? "Formal"); // ✅ Use optional chaining
+        const data = snapshot.data();
+        setVoiceTone?.(data.tone ?? "Formal");
         setSpeed?.(data.speed ?? 1);
         setPitch?.(data.pitch ?? 1);
       } catch (error) {
-        console.error("❌ Error fetching speech settings:", error);
+        console.error("❌ Error fetching speech settings from Firestore:", error);
       } finally {
         setLoading(false);
       }
@@ -58,18 +71,25 @@ export default function SpeechControls({
     if (!slide) return;
     setStatus("Saving...");
     try {
+      const token = await auth.currentUser?.getIdToken();
+      if (!token) throw new Error("No auth token found");
+
       const speechData = {
         presentation_id: slide.presentationId,
         slide_number: slide.slideNumber,
-        generated_speech: slide.text,
+        generated_speech: speeches[slide.slideNumber - 1] || slide.text,
         voice_tone: voiceTone,
         speed,
         pitch,
+        text: slide.text,
       };
 
       const response = await fetch("http://127.0.0.1:8000/save_speech", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
         body: JSON.stringify(speechData),
       });
 
@@ -94,7 +114,6 @@ export default function SpeechControls({
         <p className="text-gray-500 dark:text-gray-400">Loading settings...</p>
       ) : (
         <>
-          {/* Voice Tone Selection */}
           <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
             Voice Tone
           </label>
@@ -108,7 +127,6 @@ export default function SpeechControls({
             <option>Enthusiastic</option>
           </select>
 
-          {/* Speed Control */}
           <div className="mt-4">
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
               Speed
@@ -118,7 +136,7 @@ export default function SpeechControls({
               min="0.5"
               max="2"
               step="0.1"
-              value={speed} // ✅ Prevents undefined
+              value={speed}
               onChange={(e) => setSpeed?.(parseFloat(e.target.value))}
               className="w-full mt-1 cursor-pointer accent-blue-500"
             />
@@ -127,7 +145,6 @@ export default function SpeechControls({
             </p>
           </div>
 
-          {/* Pitch Control */}
           <div className="mt-4">
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
               Pitch
@@ -137,7 +154,7 @@ export default function SpeechControls({
               min="0.5"
               max="2"
               step="0.1"
-              value={pitch} // ✅ Prevents undefined
+              value={pitch}
               onChange={(e) => setPitch?.(parseFloat(e.target.value))}
               className="w-full mt-1 cursor-pointer accent-blue-500"
             />
@@ -146,7 +163,6 @@ export default function SpeechControls({
             </p>
           </div>
 
-          {/* Save Speech Button */}
           <button
             onClick={handleSaveSpeech}
             className="mt-6 w-full bg-blue-500 hover:bg-blue-600 text-white font-semibold py-2 rounded-lg transition-all"
@@ -154,7 +170,6 @@ export default function SpeechControls({
             Save Speech
           </button>
 
-          {/* Display Save Status */}
           {status && <p className="mt-2 text-center text-gray-600">{status}</p>}
         </>
       )}

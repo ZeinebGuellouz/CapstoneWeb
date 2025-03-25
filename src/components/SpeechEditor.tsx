@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { Slide } from "@/types";
 import { db, auth } from "@/components/firebase/firebaseConfig";
-import { doc, setDoc } from "firebase/firestore";
+import { doc, setDoc, getDoc } from "firebase/firestore";
 
 interface SpeechEditorProps {
   slide: Slide;
@@ -34,20 +34,41 @@ export default function SpeechEditor({
   const userId = user?.uid;
 
   useEffect(() => {
-    setSpeech(speeches[slideIndex] || slide.text || "");
-  }, [slideIndex, speeches, slide.text]);
-
-  // ✅ Save to Firestore
+    const loadSavedSpeech = async () => {
+      if (!userId || !presentationId) return;
+  
+      const slideRef = doc(db, "users", userId, "presentations", presentationId, "slides", `${slideIndex + 1}`);
+      const snapshot = await getDoc(slideRef);
+  
+      if (snapshot.exists()) {
+        const data = snapshot.data();
+        const savedSpeech = data.generated_speech || data.text || "";
+        setSpeech(savedSpeech);
+        setSpeeches((prev) => ({ ...prev, [slideIndex]: savedSpeech }));
+      } else {
+        setSpeech(slide.text || "");
+      }
+    };
+  
+    loadSavedSpeech();
+  }, [slideIndex, userId, presentationId]);
+  
   const saveToFirestore = async (text: string) => {
     if (!userId || !presentationId) return;
+  
     const slideRef = doc(db, "users", userId, "presentations", presentationId, "slides", `${slideIndex + 1}`);
-    await setDoc(slideRef, {
-      generated_speech: text,
-      voice_tone: voiceTone,
-      speed,
-      pitch,
-    }, { merge: true });
+    await setDoc(
+      slideRef,
+      {
+        generated_speech: text,
+        voice_tone: voiceTone,
+        speed,
+        pitch,
+      },
+      { merge: true }
+    );
   };
+  
 
   const regenerateSpeech = async () => {
     setLoading(true);
