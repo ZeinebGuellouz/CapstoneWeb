@@ -95,15 +95,19 @@ def reset_password(email: str):
 
 # ========== DATABASE DEPENDENCIES ==========
 
-def clear_slide_directory():
-    for file in SLIDE_DIR.iterdir():
-        if file.is_file():
-            file.unlink()
+def clear_slide_directory(user_id: str, presentation_id: str) -> Path:
+    slide_dir = SLIDE_DIR / user_id / presentation_id
+    if slide_dir.exists():
+        shutil.rmtree(slide_dir)
+    slide_dir.mkdir(parents=True, exist_ok=True)
+    return slide_dir
 
-def process_pdf(file_path: Path) -> List[str]:
+
+def process_pdf(file_path: Path, output_dir: Path) -> List[str]:
     try:
-        slides = convert_from_path(file_path, dpi=150, output_folder=SLIDE_DIR, fmt="png")
-        return [f"/uploads/slides/{Path(slide.filename).name}" for slide in slides]
+        slides = convert_from_path(file_path, dpi=150, output_folder=output_dir, fmt="png")
+        return [f"/uploads/slides/{output_dir.relative_to(SLIDE_DIR)}/{Path(s.filename).name}" for s in slides]
+
     except Exception as e:
         print(f"Error processing PDF: {e}")
         return []
@@ -134,10 +138,10 @@ def extract_text_from_pdf(file_path: Path) -> List[str]:
         print(f"Error extracting text from PDF: {e}")
         return []
 
-def process_pptx(file_path: Path) -> List[str]:
+def process_pptx(file_path: Path, output_dir: Path) -> List[str]:
     pythoncom.CoInitialize()
     pptx_file = os.path.abspath(file_path)
-    output_folder = os.path.abspath(SLIDE_DIR)
+    output_folder = os.path.abspath(output_dir)
     os.makedirs(output_folder, exist_ok=True)
 
     try:
@@ -148,7 +152,7 @@ def process_pptx(file_path: Path) -> List[str]:
         for i, slide in enumerate(presentation.Slides):
             output_image = os.path.join(output_folder, f"slide_{i + 1}.png")
             slide.Export(output_image, "PNG", 1280, 720)
-            slide_paths.append(f"/uploads/slides/slide_{i + 1}.png")
+            slide_paths.append(f"/uploads/slides/{output_dir.relative_to(SLIDE_DIR)}/slide_{i + 1}.png")
 
         presentation.Close()
         powerpoint.Quit()
@@ -228,9 +232,9 @@ async def generate_speech(request: Request):
     except Exception as e:
         return {"error": f"Unexpected error: {str(e)}"}
 
-@app.get("/uploads/slides/{filename}")
-async def get_slide(filename: str):
-    file_path = SLIDE_DIR / filename
+@app.get("/uploads/slides/{path:path}")
+async def get_slide(path: str):
+    file_path = SLIDE_DIR / path
     if not file_path.exists():
         raise HTTPException(status_code=404, detail="File not found.")
     return FileResponse(file_path, headers={"Cache-Control": "no-cache, no-store, must-revalidate"})
@@ -301,18 +305,23 @@ async def upload_file(
     if file_ext not in ["pptx", "pdf"]:
         raise HTTPException(status_code=400, detail="Unsupported file format")
 
+    # ✅ Save the file to disk
     file_path = UPLOAD_DIR / file.filename
     with file_path.open("wb") as buffer:
         shutil.copyfileobj(file.file, buffer)
 
-        clear_slide_directory()
+    # ✅ Generate unique ID after file is saved (to get correct mtime)
+    presentation_id = f"{int(file_path.stat().st_mtime * 1000)}_{file.filename.replace(' ', '_')}"
+
+    # ✅ Clear/create a fresh directory for this presentation
+    slide_dir = clear_slide_directory(user_id, presentation_id)
 
     try:
         if file_ext == "pptx":
-            slide_images = process_pptx(file_path)
+            slide_images = process_pptx(file_path, slide_dir)
             slide_texts = extract_text_from_pptx(file_path)
         else:
-            slide_images = process_pdf(file_path)
+            slide_images = process_pdf(file_path, slide_dir)
             slide_texts = extract_text_from_pdf(file_path)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Processing failed: {e}")
@@ -320,21 +329,13 @@ async def upload_file(
     if not slide_images:
         raise HTTPException(status_code=500, detail="No slides extracted")
 
-    # ✅ Generate unique ID
-    presentation_id = f"{int(file_path.stat().st_mtime * 1000)}_{file.filename.replace(' ', '_')}"
-
-    # ✅ Save first slide as thumbnail
-    first_slide_path = SLIDE_DIR / slide_images[0].split("/")[-1]
-    thumbnail_filename = f"{presentation_id}_1.png"
-    thumbnail_path = SLIDE_DIR / thumbnail_filename
-    shutil.copy(first_slide_path, thumbnail_path)
-
-    # ✅ Save metadata to Firestore
+    # ✅ Save metadata to Firestore (thumbnail path is user/pres specific now)
     presentation_doc = db.collection("users").document(user_id).collection("presentations").document(presentation_id)
+    thumbnail_relative_path = f"/uploads/slides/{user_id}/{presentation_id}/{Path(slide_images[0]).name}"
     presentation_doc.set({
         "fileName": file.filename,
         "createdAt": firestore.SERVER_TIMESTAMP,
-        "thumbnailUrl": f"http://127.0.0.1:8000/uploads/slides/{thumbnail_filename}"
+        "thumbnailUrl": f"http://127.0.0.1:8000{thumbnail_relative_path}",
     })
 
     slides_collection = presentation_doc.collection("slides")
@@ -353,6 +354,7 @@ async def upload_file(
             for path, text in zip(slide_images, slide_texts)
         ]
     }
+
 @app.get("/my_presentations")
 async def get_user_presentations(authorization: str = Header(...)):
     if not authorization.startswith("Bearer "):
@@ -374,17 +376,17 @@ async def get_user_presentations(authorization: str = Header(...)):
         presentation_id = doc.id
 
         # Build thumbnail URL from the first slide of each presentation
-        thumbnail_url = f"http://127.0.0.1:8000/uploads/slides/{presentation_id}_1.png"
+        thumbnail_url = data.get("thumbnailUrl")
 
         result.append({
             "id": presentation_id,
             "fileName": data.get("fileName"),
             "createdAt": data.get("createdAt"),
-            "thumbnailUrl": thumbnail_url
+            "thumbnailUrl": data.get("thumbnailUrl")
+
         })
 
     return result
-
 
 @app.delete("/delete_presentation")
 async def delete_presentation(

@@ -14,6 +14,7 @@ export function Upload() {
   const navigate = useNavigate();
   const location = useLocation();
   const { user } = useAuth();
+  const [uploading, setUploading] = useState(false);
 
   useEffect(() => {
     if (location.state?.scrollToUpload) {
@@ -50,32 +51,33 @@ export function Upload() {
   };
 
   const handleUpload = async () => {
+    if (uploading) return; // Ignore if already uploading
+  
     if (!file) {
       setUploadStatus("Please select a file before uploading.");
       return;
     }
-
+  
     if (!user) {
       setShowLogin(true);
       setTriggeredUpload(true);
       return;
     }
-
+  
+    setUploading(true); // ✅ Prevent future clicks
+  
     try {
       const data = await uploadFile(file);
-      
-      
-// Send only file to backend
       setUploadStatus(`File uploaded successfully: ${data.filename}`);
       navigate(`/viewer?presentationId=${data.presentationId}`);
-
-      
     } catch (error) {
       console.error("Error during file upload:", error);
       setUploadStatus("Failed to upload the file. Please try again.");
+    } finally {
+      setUploading(false); // ✅ Re-enable after upload
     }
   };
-
+  
   const openFileDialog = () => {
     fileInputRef.current?.click();
   };
@@ -130,10 +132,17 @@ export function Upload() {
           </div>
 
           {file && (
-            <button className="mt-6 w-full bg-primary text-white py-3 px-4 rounded-md" onClick={handleUpload}>
-              Process Presentation
-            </button>
-          )}
+  <button
+    onClick={handleUpload}
+    disabled={uploading}
+    className={`mt-6 w-full py-3 px-4 rounded-md text-white transition ${
+      uploading ? "bg-primary opacity-50 cursor-not-allowed" : "bg-primary hover:bg-primary-dark"
+    }`}
+  >
+    {uploading ? "Uploading..." : "Process Presentation"}
+  </button>
+)}
+
         </div>
 
         {uploadStatus && (
