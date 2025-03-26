@@ -8,9 +8,12 @@ interface NavigationProps {
   navigateToUpload?: () => void;
   user: User | null;
   onLogout: () => void;
+  onShowLoginModal?: () => void;
+  
+
 }
 
-export function Navigation({ isViewerPage, navigateToUpload, onUploadClick, user, onLogout }: NavigationProps) {
+export function Navigation({ isViewerPage, navigateToUpload, onUploadClick, user, onLogout, onShowLoginModal }: NavigationProps) {
   const [isOpen, setIsOpen] = React.useState(false);
 
   return (
@@ -94,6 +97,17 @@ export function Navigation({ isViewerPage, navigateToUpload, onUploadClick, user
                 </button>
               </>
             )}
+
+{!user && (
+    <button
+      onClick={onShowLoginModal}
+      className="bg-primary text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-primary-light transition"
+    >
+      Sign Up
+    </button>
+
+)}
+
           </div>
 
           {/* Mobile menu button */}
