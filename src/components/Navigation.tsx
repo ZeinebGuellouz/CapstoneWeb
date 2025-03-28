@@ -54,6 +54,39 @@ export function Navigation({
     };
   }, [showProfile]);
 
+  const renderAvatar = () => {
+    console.log(user);
+    let avatarUrl: string | null = null;
+  
+    if (user?.providerId === "facebook.com" && user.providerUid) {
+      avatarUrl = `https://graph.facebook.com/${user.providerUid}/picture?type=large`;
+    } else {
+      avatarUrl = user?.photoURL || null;
+    }
+  
+    if (user && avatarUrl && user.providerId !== "password") {
+      return (
+        <img
+          src={avatarUrl}
+          alt="Avatar"
+          className="w-10 h-10 object-cover rounded-full"
+          onError={(e) => {
+            e.currentTarget.onerror = null;
+            e.currentTarget.src = "/default-avatar.png";
+          }}
+        />
+      );
+    }
+    
+    return (
+      <div className="w-10 h-10 rounded-full bg-gray-300 flex items-center justify-center">
+        <span className="text-sm font-bold text-gray-600">
+          {getInitials(user?.displayName || null)}
+        </span>
+      </div>
+    );
+  };
+  
   return (
     <>
       <nav className="bg-white shadow-lg fixed w-full z-50">
@@ -134,17 +167,7 @@ export function Navigation({
                     onClick={() => setShowProfile((prev) => !prev)}
                     className="flex items-center justify-center w-10 h-10 rounded-full bg-gray-200 hover:ring-2 ring-blue-400 overflow-hidden"
                   >
-                    {user.photoURL ? (
-                      <img
-                        src={user.photoURL}
-                        alt="Avatar"
-                        className="w-10 h-10 object-cover"
-                      />
-                    ) : (
-                      <span className="text-sm font-bold text-gray-600">
-                        {getInitials(user.displayName)}
-                      </span>
-                    )}
+                    {renderAvatar()}
                   </button>
 
                   <AnimatePresence>
@@ -157,7 +180,17 @@ export function Navigation({
                         transition={{ duration: 0.2 }}
                         className="absolute top-16 right-0 z-50"
                       >
-                        <ProfilePanel user={user} onLogout={onLogout} />
+                        <ProfilePanel
+                          user={{
+                            displayName: user.displayName,
+                            email: user.email,
+                            photoURL: user.photoURL,
+                            providerId: user.providerId,
+                            providerUid: user.providerUid, // ✅ Add this line
+
+                          }}
+                          onLogout={onLogout}
+                        />
                       </motion.div>
                     )}
                   </AnimatePresence>
@@ -198,6 +231,10 @@ export function Navigation({
                       src={user.photoURL}
                       className="w-8 h-8 rounded-full"
                       alt="avatar"
+                      onError={(e) => {
+                        e.currentTarget.onerror = null;
+                        e.currentTarget.src = "/default-avatar.png";
+                      }}
                     />
                   ) : (
                     <div className="w-8 h-8 rounded-full bg-gray-300 flex items-center justify-center font-bold text-sm">

@@ -248,18 +248,23 @@ export function ShowSlide() {
             <h2 className="font-semibold text-lg text-gray-900 dark:text-gray-100">Speech Controls</h2>
           </div>
           <div className="p-4">
-            {currentSlide && <SpeechControls
-  slide={currentSlide}
-  setVoiceTone={setVoiceTone}
-  setSpeed={setSpeed}
-  setPitch={setPitch}
-  voiceTone={voiceTone}
-  speed={speed}
-  pitch={pitch}
-  speeches={speeches}
- />}
+  {currentSlide && (
+    <SpeechControls
+      slide={currentSlide}
+      setVoiceTone={setVoiceTone}
+      setSpeed={setSpeed}
+      setPitch={setPitch}
+      voiceTone={voiceTone}
+      speed={speed}
+      pitch={pitch}
+      speeches={speeches}
+      totalSlides={slides.length}
+      currentIndex={currentSlideIndex}
+      setCurrentSlideIndex={setCurrentSlideIndex}
+    />
+  )}
+</div>
 
-          </div>
         </div>
       </div>
     </div>

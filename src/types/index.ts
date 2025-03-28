@@ -16,7 +16,9 @@ export interface User {
   photoURL: string | null;
   id: string;
   name: string;
-  
+  providerId: string; 
+  providerUid?: string; // Add this line
+
 
 }
 

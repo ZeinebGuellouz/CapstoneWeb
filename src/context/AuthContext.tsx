@@ -29,12 +29,16 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (firebaseUser: FirebaseUser | null) => {
       if (firebaseUser) {
+        const providerData = firebaseUser.providerData[0];
         const mappedUser: CustomUser = {
           id: firebaseUser.uid,
           name: firebaseUser.displayName || "",
           email: firebaseUser.email || "",
           displayName: firebaseUser.displayName || "",
-          photoURL: firebaseUser.photoURL || null,
+          photoURL: firebaseUser.photoURL || null, // ✅ just use this directly
+          providerId: providerData?.providerId || "password",
+          providerUid: providerData?.uid || "", // ✅ Add this
+
         };
         setUser(mappedUser);
       } else {

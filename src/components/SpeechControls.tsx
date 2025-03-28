@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { auth, db } from "@/components/firebase/firebaseConfig";
 import { doc, getDoc } from "firebase/firestore";
 
@@ -15,6 +15,9 @@ interface SpeechControlsProps {
   speed?: number;
   pitch?: number;
   speeches?: { [key: number]: string };
+  totalSlides: number;
+  currentIndex: number;
+  setCurrentSlideIndex: React.Dispatch<React.SetStateAction<number>>;
 }
 
 export default function SpeechControls({
@@ -26,9 +29,33 @@ export default function SpeechControls({
   speed = 1,
   pitch = 1,
   speeches = {},
+  totalSlides,
+  setCurrentSlideIndex,
+  currentIndex,
 }: SpeechControlsProps) {
   const [loading, setLoading] = useState(true);
   const [status, setStatus] = useState<string | null>(null);
+  const [availableVoices, setAvailableVoices] = useState<SpeechSynthesisVoice[]>([]);
+  const [selectedVoice, setSelectedVoice] = useState<string>("");
+  const [isPaused, setIsPaused] = useState(false);
+
+  const synthRef = useRef(window.speechSynthesis);
+  const currentUtteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
+
+  useEffect(() => {
+    const loadVoices = () => {
+      const voices = window.speechSynthesis.getVoices();
+      setAvailableVoices(voices);
+      if (voices.length > 0 && !selectedVoice) {
+        setSelectedVoice(voices[0].name);
+      }
+    };
+
+    if (speechSynthesis.onvoiceschanged !== undefined) {
+      speechSynthesis.onvoiceschanged = loadVoices;
+    }
+    loadVoices();
+  }, []);
 
   useEffect(() => {
     if (!slide) return;
@@ -54,9 +81,12 @@ export default function SpeechControls({
         if (!snapshot.exists()) throw new Error("Slide data not found");
 
         const data = snapshot.data();
-        setVoiceTone?.(data.tone ?? "Formal");
+        setVoiceTone?.(data.voice_tone ?? "Formal");
         setSpeed?.(data.speed ?? 1);
         setPitch?.(data.pitch ?? 1);
+        if (data.voice && availableVoices.find(v => v.name === data.voice)) {
+          setSelectedVoice(data.voice);
+        }
       } catch (error) {
         console.error("❌ Error fetching speech settings from Firestore:", error);
       } finally {
@@ -65,7 +95,51 @@ export default function SpeechControls({
     };
 
     fetchSpeechSettings();
-  }, [slide?.presentationId, slide?.slideNumber]);
+  }, [slide?.presentationId, slide?.slideNumber, availableVoices]);
+
+  const speakSlideRecursively = (index: number) => {
+    if (index >= totalSlides) return;
+
+    const text = speeches[index] || "";
+    if (!text) {
+      setTimeout(() => speakSlideRecursively(index + 1), 300);
+      return;
+    }
+
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.pitch = pitch;
+    utterance.rate = speed;
+
+    const selected = availableVoices.find((v) => v.name === selectedVoice);
+    if (selected) utterance.voice = selected;
+
+    utterance.onend = () => {
+      if (!synthRef.current.paused && index + 1 < totalSlides) {
+        setCurrentSlideIndex(index + 1);
+        setTimeout(() => speakSlideRecursively(index + 1), 400);
+      }
+    };
+
+    synthRef.current.cancel();
+    synthRef.current.speak(utterance);
+    currentUtteranceRef.current = utterance;
+    setIsPaused(false);
+  };
+
+  const pause = () => {
+    synthRef.current.pause();
+    setIsPaused(true);
+  };
+
+  const resume = () => {
+    synthRef.current.resume();
+    setIsPaused(false);
+  };
+
+  const stop = () => {
+    synthRef.current.cancel();
+    setIsPaused(false);
+  };
 
   const handleSaveSpeech = async () => {
     if (!slide) return;
@@ -81,6 +155,7 @@ export default function SpeechControls({
         voice_tone: voiceTone,
         speed,
         pitch,
+        voice: selectedVoice,
         text: slide.text,
       };
 
@@ -105,73 +180,105 @@ export default function SpeechControls({
   };
 
   return (
-    <div className="p-6 bg-white dark:bg-gray-900 rounded-lg shadow-md border border-gray-200 dark:border-gray-700">
-      <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4">
-        Speech Customization
-      </h2>
+    <div className="p-6 bg-white dark:bg-gray-900 rounded-2xl shadow-xl border border-gray-200 dark:border-gray-700 space-y-6">
+      <h2 className="text-2xl font-bold text-gray-900 dark:text-white">Speech Assistant</h2>
 
       {loading ? (
         <p className="text-gray-500 dark:text-gray-400">Loading settings...</p>
       ) : (
-        <>
-          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-            Voice Tone
-          </label>
-          <select
-            value={voiceTone}
-            onChange={(e) => setVoiceTone?.(e.target.value)}
-            className="mt-1 block w-full rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 p-2 text-gray-900 dark:text-gray-200 focus:ring-2 focus:ring-blue-500"
-          >
-            <option>Formal</option>
-            <option>Casual</option>
-            <option>Enthusiastic</option>
-          </select>
+        <div className="space-y-4">
+          <div className="grid grid-cols-1 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Voice Tone</label>
+              <select
+                value={voiceTone}
+                onChange={(e) => setVoiceTone?.(e.target.value)}
+                className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 p-2 text-gray-900 dark:text-white"
+              >
+                <option>Formal</option>
+                <option>Casual</option>
+                <option>Enthusiastic</option>
+              </select>
+            </div>
 
-          <div className="mt-4">
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-              Speed
-            </label>
-            <input
-              type="range"
-              min="0.5"
-              max="2"
-              step="0.1"
-              value={speed}
-              onChange={(e) => setSpeed?.(parseFloat(e.target.value))}
-              className="w-full mt-1 cursor-pointer accent-blue-500"
-            />
-            <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-              Current: {speed?.toFixed(1) ?? "1.0"}x
-            </p>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Voice</label>
+              <select
+                value={selectedVoice}
+                onChange={(e) => setSelectedVoice(e.target.value)}
+                className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 p-2 text-gray-900 dark:text-white"
+              >
+                {availableVoices.map((voice) => (
+                  <option key={voice.name} value={voice.name}>
+                    {voice.name} ({voice.lang})
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Speed: {speed.toFixed(1)}x</label>
+              <input
+                type="range"
+                min="0.5"
+                max="2"
+                step="0.1"
+                value={speed}
+                onChange={(e) => setSpeed?.(parseFloat(e.target.value))}
+                className="w-full accent-blue-500"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Pitch: {pitch.toFixed(1)}</label>
+              <input
+                type="range"
+                min="0.5"
+                max="2"
+                step="0.1"
+                value={pitch}
+                onChange={(e) => setPitch?.(parseFloat(e.target.value))}
+                className="w-full accent-blue-500"
+              />
+            </div>
           </div>
 
-          <div className="mt-4">
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-              Pitch
-            </label>
-            <input
-              type="range"
-              min="0.5"
-              max="2"
-              step="0.1"
-              value={pitch}
-              onChange={(e) => setPitch?.(parseFloat(e.target.value))}
-              className="w-full mt-1 cursor-pointer accent-blue-500"
-            />
-            <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-              Current: {pitch?.toFixed(1) ?? "1.0"}
-            </p>
+          <div className="grid grid-cols-2 gap-4">
+            <button
+              onClick={() => speakSlideRecursively(currentIndex)}
+              className="bg-green-500 hover:bg-green-600 text-white font-semibold py-2 rounded-lg shadow"
+            >
+              ▶️ Play All
+            </button>
+            <button
+              onClick={pause}
+              className="bg-yellow-500 hover:bg-yellow-600 text-white font-semibold py-2 rounded-lg shadow"
+            >
+              ⏸️ Pause
+            </button>
+            <button
+              onClick={resume}
+              className="bg-blue-500 hover:bg-blue-600 text-white font-semibold py-2 rounded-lg shadow"
+            >
+              ▶️ Resume
+            </button>
+            <button
+              onClick={stop}
+              className="bg-red-500 hover:bg-red-600 text-white font-semibold py-2 rounded-lg shadow"
+            >
+              ⏹️ Stop
+            </button>
           </div>
 
           <button
             onClick={handleSaveSpeech}
-            className="mt-6 w-full bg-blue-500 hover:bg-blue-600 text-white font-semibold py-2 rounded-lg transition-all"
+            className="w-full bg-indigo-500 hover:bg-indigo-600 text-white font-semibold py-2 rounded-lg shadow mt-4"
           >
-            Save Speech
+            💾 Save Speech
           </button>
 
-          {status && <p className="mt-2 text-center text-gray-600">{status}</p>}
-        </>
+          {status && <p className="text-center text-sm text-gray-600 dark:text-gray-300 mt-2">{status}</p>}
+        </div>
       )}
     </div>
   );
