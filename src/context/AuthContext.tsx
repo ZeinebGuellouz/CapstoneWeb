@@ -1,11 +1,17 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from "react";
 import { User as FirebaseUser } from "firebase/auth";
-import { auth } from "../components/firebase/firebaseConfig";
-import { User, onAuthStateChanged, signOut, signInWithEmailAndPassword } from "firebase/auth";
+import {
+  signInWithEmailAndPassword,
+  signOut,
+  onAuthStateChanged,
+  } from "firebase/auth";
 import { User as CustomUser } from "../types";
+import { auth } from "../components/firebase/firebaseConfig"; // ✅ Correct import
+
 
 interface AuthContextType {
   user: CustomUser | null;
+  loading: boolean;
   login: (email: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
 }
@@ -18,6 +24,7 @@ interface AuthProviderProps {
 
 export const AuthProvider = ({ children }: AuthProviderProps) => {
   const [user, setUser] = useState<CustomUser | null>(null);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (firebaseUser: FirebaseUser | null) => {
@@ -26,11 +33,14 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
           id: firebaseUser.uid,
           name: firebaseUser.displayName || "",
           email: firebaseUser.email || "",
+          displayName: firebaseUser.displayName || "",
+          photoURL: firebaseUser.photoURL || null,
         };
         setUser(mappedUser);
       } else {
         setUser(null);
       }
+      setLoading(false); // ✅ Set to false whether user exists or not
     });
 
     return () => unsubscribe();
@@ -42,11 +52,11 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
 
   const logout = async () => {
     await signOut(auth);
-    setUser(null); // Ensure state resets after logout
+    setUser(null);
   };
 
   return (
-    <AuthContext.Provider value={{ user, login, logout }}>
+    <AuthContext.Provider value={{ user, loading, login, logout }}>
       {children}
     </AuthContext.Provider>
   );

@@ -1,6 +1,9 @@
 import * as React from "react";
 import { Menu, X } from "lucide-react";
 import { User } from "../types";
+import { ProfilePanel } from "./ProfilePanel";
+import { motion, AnimatePresence } from "framer-motion";
+import { useAuth } from "../context/AuthContext";
 
 interface NavigationProps {
   isViewerPage?: boolean;
@@ -9,172 +12,205 @@ interface NavigationProps {
   user: User | null;
   onLogout: () => void;
   onShowLoginModal?: () => void;
-  
-
 }
 
-export function Navigation({ isViewerPage, navigateToUpload, onUploadClick, user, onLogout, onShowLoginModal }: NavigationProps) {
+export function Navigation({
+  isViewerPage,
+  navigateToUpload,
+  onUploadClick,
+  user,
+  onLogout,
+  onShowLoginModal,
+}: NavigationProps) {
   const [isOpen, setIsOpen] = React.useState(false);
+  const [showProfile, setShowProfile] = React.useState(false);
+  const profileRef = React.useRef<HTMLDivElement | null>(null);
+  const { loading } = useAuth();
+
+  const getInitials = (name: string | null) => {
+    if (!name) return "U";
+    return name
+      .split(" ")
+      .map((n) => n[0])
+      .join("")
+      .toUpperCase();
+  };
+
+  React.useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (
+        profileRef.current &&
+        !profileRef.current.contains(event.target as Node)
+      ) {
+        setShowProfile(false);
+      }
+    };
+
+    if (showProfile) {
+      document.addEventListener("mousedown", handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, [showProfile]);
 
   return (
-    <nav className="bg-white shadow-lg fixed w-full z-50">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex justify-between h-16 items-center">
-          {/* Logo */}
-          <div
-            className="flex items-center cursor-pointer"
-            onClick={() => {
-              if (window.location.pathname === "/") {
-                document.getElementById("hero")?.scrollIntoView({ behavior: "smooth" });
-              } else {
-                window.location.href = "/";
-              }
-            }}
-          >
-            <span className="text-xl font-bold text-gray-800">PresentPro</span>
-          </div>
-
-          {/* Desktop Navigation */}
-          <div className="hidden md:flex items-center space-x-8">
-            {!isViewerPage && (
-              <>
-                <button
-                  onClick={() =>
-                    window.location.pathname === "/"
-                      ? document.getElementById("hero")?.scrollIntoView({ behavior: "smooth" })
-                      : (window.location.href = "/")
-                  }
-                  className="text-gray-600 hover:text-gray-900 px-3 py-2 rounded-md text-sm font-medium cursor-pointer"
-                >
-                  Home
-                </button>
-                <button
-                onClick={() => {
-                 sessionStorage.setItem("scrollTo", "features");
-                 window.location.href = "/";
-                }}
-                  className="text-gray-600 hover:text-gray-900 px-3 py-2 rounded-md text-sm font-medium cursor-pointer"
-                >
-                  Features
-                </button>
-                <button
-                 onClick={() => {
-                  sessionStorage.setItem("scrollTo", "upload");
+    <>
+      <nav className="bg-white shadow-lg fixed w-full z-50">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex justify-between h-16 items-center">
+            <div
+              className="flex items-center cursor-pointer"
+              onClick={() => {
+                if (window.location.pathname === "/") {
+                  document
+                    .getElementById("hero")
+                    ?.scrollIntoView({ behavior: "smooth" });
+                } else {
                   window.location.href = "/";
-                }}
-                
-                  className="text-gray-600 hover:text-gray-900 px-3 py-2 rounded-md text-sm font-medium cursor-pointer"
-                >
-                  Upload
-                </button>
-                <button
-                  onClick={() => {
-                    sessionStorage.setItem("scrollTo", "contact");
-                    window.location.href = "/";
-                  }}
-                  
-                  className="text-gray-600 hover:text-gray-900 px-3 py-2 rounded-md text-sm font-medium cursor-pointer"
-                >
-                  Contact
-                </button>
-              </>
-            )}
-
-            {/* ✅ Show when logged in */}
-            {user && (
-              <>
-                <button
-                  onClick={() => (window.location.href = "/my-presentations")}
-                  className="text-gray-600 hover:text-gray-900 px-3 py-2 rounded-md text-sm font-medium cursor-pointer"
-                >
-                  My Presentations
-                </button>
-                <button
-                  onClick={onLogout}
-                  className="bg-red-500 text-white px-4 py-2 rounded-md text-sm font-medium cursor-pointer hover:bg-red-600 transition"
-                >
-                  Logout
-                </button>
-              </>
-            )}
-
-{!user && (
-    <button
-      onClick={onShowLoginModal}
-      className="bg-primary text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-primary-light transition"
-    >
-      Sign Up
-    </button>
-
-)}
-
-          </div>
-
-          {/* Mobile menu button */}
-          <div className="md:hidden flex items-center">
-            <button
-              onClick={() => setIsOpen(!isOpen)}
-              className="inline-flex items-center justify-center p-2 rounded-md text-gray-400 hover:text-gray-500 hover:bg-gray-100"
+                }
+              }}
             >
-              {isOpen ? <X size={24} /> : <Menu size={24} />}
-            </button>
+              <span className="text-xl font-bold text-gray-800">
+                PresentPro
+              </span>
+            </div>
+
+            <div className="hidden md:flex items-center space-x-8 relative">
+              {!isViewerPage && (
+                <>
+                  <button
+                    onClick={() =>
+                      window.location.pathname === "/"
+                        ? document
+                            .getElementById("hero")
+                            ?.scrollIntoView({ behavior: "smooth" })
+                        : (window.location.href = "/")
+                    }
+                    className="text-gray-600 hover:text-gray-900 px-3 py-2 rounded-md text-sm font-medium cursor-pointer"
+                  >
+                    Home
+                  </button>
+                  <button
+                    onClick={() => {
+                      sessionStorage.setItem("scrollTo", "features");
+                      window.location.href = "/";
+                    }}
+                    className="text-gray-600 hover:text-gray-900 px-3 py-2 rounded-md text-sm font-medium cursor-pointer"
+                  >
+                    Features
+                  </button>
+                  <button
+                    onClick={() => {
+                      sessionStorage.setItem("scrollTo", "upload");
+                      window.location.href = "/";
+                    }}
+                    className="text-gray-600 hover:text-gray-900 px-3 py-2 rounded-md text-sm font-medium cursor-pointer"
+                  >
+                    Upload
+                  </button>
+                  <button
+                    onClick={() => {
+                      sessionStorage.setItem("scrollTo", "contact");
+                      window.location.href = "/";
+                    }}
+                    className="text-gray-600 hover:text-gray-900 px-3 py-2 rounded-md text-sm font-medium cursor-pointer"
+                  >
+                    Contact
+                  </button>
+                </>
+              )}
+
+              {user ? (
+                <>
+                  <button
+                    onClick={() => (window.location.href = "/my-presentations")}
+                    className="text-gray-600 hover:text-gray-900 px-3 py-2 rounded-md text-sm font-medium cursor-pointer"
+                  >
+                    My Presentations
+                  </button>
+
+                  <button
+                    onClick={() => setShowProfile((prev) => !prev)}
+                    className="flex items-center justify-center w-10 h-10 rounded-full bg-gray-200 hover:ring-2 ring-blue-400 overflow-hidden"
+                  >
+                    {user.photoURL ? (
+                      <img
+                        src={user.photoURL}
+                        alt="Avatar"
+                        className="w-10 h-10 object-cover"
+                      />
+                    ) : (
+                      <span className="text-sm font-bold text-gray-600">
+                        {getInitials(user.displayName)}
+                      </span>
+                    )}
+                  </button>
+
+                  <AnimatePresence>
+                    {showProfile && (
+                      <motion.div
+                        ref={profileRef}
+                        initial={{ opacity: 0, y: -10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: -10 }}
+                        transition={{ duration: 0.2 }}
+                        className="absolute top-16 right-0 z-50"
+                      >
+                        <ProfilePanel user={user} onLogout={onLogout} />
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </>
+              ) : (
+                !loading && (
+                  <button
+                    onClick={onShowLoginModal}
+                    className="bg-primary text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-primary-light transition"
+                  >
+                    Sign Up
+                  </button>
+                )
+              )}
+            </div>
+
+            <div className="md:hidden flex items-center">
+              <button
+                onClick={() => setIsOpen(!isOpen)}
+                className="inline-flex items-center justify-center p-2 rounded-md text-gray-400 hover:text-gray-500 hover:bg-gray-100"
+              >
+                {isOpen ? <X size={24} /> : <Menu size={24} />}
+              </button>
+            </div>
           </div>
         </div>
-      </div>
 
-      {/* Mobile Navigation */}
-      {isOpen && (
-        <div className="md:hidden">
-          <div className="px-2 pt-2 pb-3 space-y-1 sm:px-3">
-            {!isViewerPage && (
-              <>
+        {isOpen && (
+          <div className="md:hidden">
+            <div className="px-2 pt-2 pb-3 space-y-1 sm:px-3">
+              {user && (
                 <button
-                  onClick={() => window.location.href = "/"}
-                  className="block w-full text-left px-3 py-2 rounded-md text-base font-medium text-gray-600 hover:text-gray-900 hover:bg-gray-50"
+                  onClick={() => setShowProfile((prev) => !prev)}
+                  className="flex items-center gap-2 px-4 py-2 text-gray-700 bg-gray-100 rounded-md"
                 >
-                  Home
+                  {user.photoURL ? (
+                    <img
+                      src={user.photoURL}
+                      className="w-8 h-8 rounded-full"
+                      alt="avatar"
+                    />
+                  ) : (
+                    <div className="w-8 h-8 rounded-full bg-gray-300 flex items-center justify-center font-bold text-sm">
+                      {getInitials(user.displayName)}
+                    </div>
+                  )}
+                  <span>Profile</span>
                 </button>
-                <button
-                  onClick={() => document.getElementById("features")?.scrollIntoView({ behavior: "smooth" })}
-                  className="block w-full text-left px-3 py-2 rounded-md text-base font-medium text-gray-600 hover:text-gray-900 hover:bg-gray-50"
-                >
-                  Features
-                </button>
-                <button
-                  onClick={() => document.getElementById("upload")?.scrollIntoView({ behavior: "smooth" })}
-                  className="block w-full text-left px-3 py-2 rounded-md text-base font-medium text-gray-600 hover:text-gray-900 hover:bg-gray-50"
-                >
-                  Upload
-                </button>
-                <button
-                  onClick={() => document.getElementById("contact")?.scrollIntoView({ behavior: "smooth" })}
-                  className="block w-full text-left px-3 py-2 rounded-md text-base font-medium text-gray-600 hover:text-gray-900 hover:bg-gray-50"
-                >
-                  Contact
-                </button>
-              </>
-            )}
-
-            {/* ✅ Show when logged in */}
-            {user && (
-              <>
-                <button
-                  onClick={() => (window.location.href = "/my-presentations")}
-                  className="block w-full text-left px-3 py-2 rounded-md text-base font-medium text-gray-600 hover:text-gray-900 hover:bg-gray-50"
-                >
-                  My Presentations
-                </button>
-                <button
-                  onClick={onLogout}
-                  className="block w-full text-left px-3 py-2 rounded-md text-base font-medium text-red-500 hover:text-red-700 hover:bg-gray-50"
-                >
-                  Logout
-                </button>
-              </>
-            )}
+              )}
+            </div>
           </div>
-        </div>
-      )}
-    </nav>
+        )}
+      </nav>
+    </>
   );
 }

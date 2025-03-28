@@ -6,16 +6,20 @@ export interface NavItem {
 
 // Define and export the User type
 
+
 export interface User {
 
+  email: string | null;
+
+  displayName: string | null;
+
+  photoURL: string | null;
   id: string;
-
   name: string;
-
-  email: string;
-
+  
 
 }
+
 
 export interface Slide {
   image: string;
