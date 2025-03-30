@@ -8,6 +8,7 @@ interface SpeechControlsProps {
     slideNumber: number;
     text: string;
   };
+  slides: { presentationId: string; slideNumber: number; text: string }[];
   setVoiceTone?: (tone: string) => void;
   setSpeed?: (speed: number) => void;
   setPitch?: (pitch: number) => void;
@@ -32,16 +33,19 @@ export default function SpeechControls({
   totalSlides,
   setCurrentSlideIndex,
   currentIndex,
+  slides,
 }: SpeechControlsProps) {
   const [loading, setLoading] = useState(true);
   const [status, setStatus] = useState<string | null>(null);
   const [availableVoices, setAvailableVoices] = useState<SpeechSynthesisVoice[]>([]);
   const [selectedVoice, setSelectedVoice] = useState<string>("");
   const [isPaused, setIsPaused] = useState(false);
+  const [isPlaying, setIsPlaying] = useState(false);
 
   const synthRef = useRef(window.speechSynthesis);
   const currentUtteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
 
+  // ✅ Load available voices
   useEffect(() => {
     const loadVoices = () => {
       const voices = window.speechSynthesis.getVoices();
@@ -57,6 +61,7 @@ export default function SpeechControls({
     loadVoices();
   }, []);
 
+  // ✅ Load speech settings from Firestore
   useEffect(() => {
     if (!slide) return;
 
@@ -97,14 +102,33 @@ export default function SpeechControls({
     fetchSpeechSettings();
   }, [slide?.presentationId, slide?.slideNumber, availableVoices]);
 
-  const speakSlideRecursively = (index: number) => {
-    if (index >= totalSlides) return;
+  useEffect(() => {
+    if (!isPlaying) return;
+  
+    // Give browser a short moment to register slide change
+    setTimeout(() => {
+      console.log("🔁 Now speaking slide", currentIndex);
+      speakSlide(currentIndex);
+    }, 300); // ⏱️ Small delay is key
+  }, [currentIndex, isPlaying]);
+  
+  // ✅ Core TTS handler
+  const speakSlide = (index: number) => {
+    const text = speeches[index] || slides[index]?.text || "";
 
-    const text = speeches[index] || "";
-    if (!text) {
-      setTimeout(() => speakSlideRecursively(index + 1), 300);
+    if (!text.trim()) {
+      console.log(`⚠️ Skipping empty slide ${index + 1}`);
+      setTimeout(() => handleNext(index), 300);
       return;
     }
+
+    if (synthRef.current.speaking || synthRef.current.pending) {
+      console.log("⏳ Still speaking. Cancelling...");
+      synthRef.current.cancel();
+      setTimeout(() => speakSlide(index), 300); // ⏱️ give it more time
+      return;
+    }
+    
 
     const utterance = new SpeechSynthesisUtterance(text);
     utterance.pitch = pitch;
@@ -114,31 +138,77 @@ export default function SpeechControls({
     if (selected) utterance.voice = selected;
 
     utterance.onend = () => {
-      if (!synthRef.current.paused && index + 1 < totalSlides) {
-        setCurrentSlideIndex(index + 1);
-        setTimeout(() => speakSlideRecursively(index + 1), 400);
-      }
+      console.log(`✅ Finished slide ${index + 1}`);
+      handleNext(index);
     };
 
-    synthRef.current.cancel();
-    synthRef.current.speak(utterance);
+    utterance.onerror = (e) => {
+      console.error(`❌ Speech error on slide ${index + 1}:`, e.error);
+      handleNext(index);
+    };
+
     currentUtteranceRef.current = utterance;
-    setIsPaused(false);
+    synthRef.current.speak(utterance);
+  };
+
+  const handleNext = (current: number) => {
+    if (!isPlaying) {
+      console.log("⏹️ Not playing, so stopping at", current);
+      return;
+    }
+  
+    const next = current + 1;
+    console.log("➡️ Going to slide", next);
+  
+    if (next < totalSlides) {
+      setCurrentSlideIndex(next);
+    } else {
+      console.log("✅ All slides done. Stopping.");
+      stop();
+    }
+  };
+  useEffect(() => {
+    console.log("🎯 currentIndex updated to:", currentIndex);
+  }, [currentIndex]);
+    
+
+  const playAll = () => {
+    const ensureVoicesReady = () => {
+      const voices = window.speechSynthesis.getVoices();
+      if (voices.length === 0) {
+        setTimeout(ensureVoicesReady, 100);
+      } else {
+        setIsPlaying(true);
+        speakSlide(currentIndex);
+      }
+    };
+    ensureVoicesReady();
   };
 
   const pause = () => {
     synthRef.current.pause();
     setIsPaused(true);
+    setIsPlaying(false);
   };
 
   const resume = () => {
     synthRef.current.resume();
     setIsPaused(false);
+    setIsPlaying(true);
   };
 
   const stop = () => {
     synthRef.current.cancel();
     setIsPaused(false);
+    setIsPlaying(false);
+  };
+
+  const restart = () => {
+    stop();
+    setTimeout(() => {
+      setCurrentSlideIndex(0);
+      playAll();
+    }, 200);
   };
 
   const handleSaveSpeech = async () => {
@@ -168,10 +238,7 @@ export default function SpeechControls({
         body: JSON.stringify(speechData),
       });
 
-      if (!response.ok) {
-        throw new Error("Failed to save speech settings.");
-      }
-
+      if (!response.ok) throw new Error("Failed to save speech settings.");
       setStatus("✅ Speech settings saved successfully!");
     } catch (error) {
       console.error("❌ Error saving speech:", error);
@@ -182,19 +249,15 @@ export default function SpeechControls({
   return (
     <div className="p-6 bg-white dark:bg-gray-900 rounded-2xl shadow-xl border border-gray-200 dark:border-gray-700 space-y-6">
       <h2 className="text-2xl font-bold text-gray-900 dark:text-white">Speech Assistant</h2>
-
       {loading ? (
         <p className="text-gray-500 dark:text-gray-400">Loading settings...</p>
       ) : (
-        <div className="space-y-4">
+        <>
           <div className="grid grid-cols-1 gap-4">
+            {/* Voice Controls */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Voice Tone</label>
-              <select
-                value={voiceTone}
-                onChange={(e) => setVoiceTone?.(e.target.value)}
-                className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 p-2 text-gray-900 dark:text-white"
-              >
+              <label className="block text-sm font-medium">Voice Tone</label>
+              <select value={voiceTone} onChange={(e) => setVoiceTone?.(e.target.value)} className="w-full p-2 rounded">
                 <option>Formal</option>
                 <option>Casual</option>
                 <option>Enthusiastic</option>
@@ -202,12 +265,8 @@ export default function SpeechControls({
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Voice</label>
-              <select
-                value={selectedVoice}
-                onChange={(e) => setSelectedVoice(e.target.value)}
-                className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 p-2 text-gray-900 dark:text-white"
-              >
+              <label className="block text-sm font-medium">Voice</label>
+              <select value={selectedVoice} onChange={(e) => setSelectedVoice(e.target.value)} className="w-full p-2 rounded">
                 {availableVoices.map((voice) => (
                   <option key={voice.name} value={voice.name}>
                     {voice.name} ({voice.lang})
@@ -217,68 +276,35 @@ export default function SpeechControls({
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Speed: {speed.toFixed(1)}x</label>
-              <input
-                type="range"
-                min="0.5"
-                max="2"
-                step="0.1"
-                value={speed}
-                onChange={(e) => setSpeed?.(parseFloat(e.target.value))}
-                className="w-full accent-blue-500"
-              />
+              <label className="block text-sm font-medium">Speed: {speed.toFixed(1)}x</label>
+              <input type="range" min="0.5" max="2" step="0.1" value={speed} onChange={(e) => setSpeed?.(parseFloat(e.target.value))} className="w-full" />
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Pitch: {pitch.toFixed(1)}</label>
-              <input
-                type="range"
-                min="0.5"
-                max="2"
-                step="0.1"
-                value={pitch}
-                onChange={(e) => setPitch?.(parseFloat(e.target.value))}
-                className="w-full accent-blue-500"
-              />
+              <label className="block text-sm font-medium">Pitch: {pitch.toFixed(1)}</label>
+              <input type="range" min="0.5" max="2" step="0.1" value={pitch} onChange={(e) => setPitch?.(parseFloat(e.target.value))} className="w-full" />
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
-            <button
-              onClick={() => speakSlideRecursively(currentIndex)}
-              className="bg-green-500 hover:bg-green-600 text-white font-semibold py-2 rounded-lg shadow"
-            >
-              ▶️ Play All
-            </button>
-            <button
-              onClick={pause}
-              className="bg-yellow-500 hover:bg-yellow-600 text-white font-semibold py-2 rounded-lg shadow"
-            >
-              ⏸️ Pause
-            </button>
-            <button
-              onClick={resume}
-              className="bg-blue-500 hover:bg-blue-600 text-white font-semibold py-2 rounded-lg shadow"
-            >
-              ▶️ Resume
-            </button>
-            <button
-              onClick={stop}
-              className="bg-red-500 hover:bg-red-600 text-white font-semibold py-2 rounded-lg shadow"
-            >
-              ⏹️ Stop
-            </button>
+          {/* Controls */}
+          <div className="grid grid-cols-2 gap-4 mt-4">
+            <button onClick={playAll} disabled={isPlaying} className="bg-green-500 text-white rounded p-2 disabled:opacity-50">▶️ Play All</button>
+            <button onClick={pause} disabled={!isPlaying} className="bg-yellow-500 text-white rounded p-2 disabled:opacity-50">⏸️ Pause</button>
+            <button onClick={resume} disabled={!isPaused} className="bg-blue-500 text-white rounded p-2 disabled:opacity-50">▶️ Resume</button>
+            <button onClick={stop} disabled={!isPlaying && !isPaused} className="bg-red-500 text-white rounded p-2 disabled:opacity-50">⏹️ Stop</button>
           </div>
 
-          <button
-            onClick={handleSaveSpeech}
-            className="w-full bg-indigo-500 hover:bg-indigo-600 text-white font-semibold py-2 rounded-lg shadow mt-4"
-          >
-            💾 Save Speech
-          </button>
+          <button onClick={restart} className="w-full bg-purple-500 text-white rounded p-2 mt-2">🔁 Restart From Beginning</button>
+          <button onClick={handleSaveSpeech} className="w-full bg-indigo-500 text-white rounded p-2 mt-4">💾 Save Speech</button>
 
-          {status && <p className="text-center text-sm text-gray-600 dark:text-gray-300 mt-2">{status}</p>}
-        </div>
+          {isPlaying && (
+            <p className="text-center text-sm text-green-600 mt-2">
+              🔊 Speaking Slide {currentIndex + 1} of {totalSlides}
+            </p>
+          )}
+
+          {status && <p className="text-center text-sm mt-2">{status}</p>}
+        </>
       )}
     </div>
   );
