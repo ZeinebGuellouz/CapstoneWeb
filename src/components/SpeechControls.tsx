@@ -113,43 +113,55 @@ export default function SpeechControls({
   }, [currentIndex, isPlaying]);
   
   // ✅ Core TTS handler
+  let hasRetried = false;
+
   const speakSlide = (index: number) => {
     const text = speeches[index] || slides[index]?.text || "";
-
+  
     if (!text.trim()) {
       console.log(`⚠️ Skipping empty slide ${index + 1}`);
       setTimeout(() => handleNext(index), 300);
       return;
     }
-
+  
     if (synthRef.current.speaking || synthRef.current.pending) {
       console.log("⏳ Still speaking. Cancelling...");
       synthRef.current.cancel();
-      setTimeout(() => speakSlide(index), 300); // ⏱️ give it more time
+  
+      if (!hasRetried) {
+        hasRetried = true;
+        setTimeout(() => speakSlide(index), 500);
+      } else {
+        console.warn("⚠️ Skipping due to repeated interruption.");
+        handleNext(index); // skip this slide to avoid infinite loop
+      }
+  
       return;
     }
-    
-
+  
     const utterance = new SpeechSynthesisUtterance(text);
     utterance.pitch = pitch;
     utterance.rate = speed;
-
+  
     const selected = availableVoices.find((v) => v.name === selectedVoice);
     if (selected) utterance.voice = selected;
-
+  
     utterance.onend = () => {
       console.log(`✅ Finished slide ${index + 1}`);
+      hasRetried = false;
       handleNext(index);
     };
-
+  
     utterance.onerror = (e) => {
       console.error(`❌ Speech error on slide ${index + 1}:`, e.error);
-      handleNext(index);
+      hasRetried = false;
+      handleNext(index); // don't call stop() here
     };
-
+  
     currentUtteranceRef.current = utterance;
     synthRef.current.speak(utterance);
   };
+  
 
   const handleNext = (current: number) => {
     if (!isPlaying) {
@@ -167,6 +179,7 @@ export default function SpeechControls({
       stop();
     }
   };
+  
   useEffect(() => {
     console.log("🎯 currentIndex updated to:", currentIndex);
   }, [currentIndex]);
