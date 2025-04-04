@@ -53,10 +53,6 @@ export function ShowSlide() {
   }, [location.search, presentationId]);
 
   const currentSlide = slides[currentSlideIndex];
-  useEffect(() => {
-  console.log("👉 Slide changed to index:", currentSlideIndex);
-}, [currentSlideIndex]);
-
 
   const toggleFullScreen = () => {
     if (!document.fullscreenElement && slideContainerRef.current) {
@@ -100,88 +96,79 @@ export function ShowSlide() {
   }, [currentSlideIndex, slides.length]);
 
   return (
-    <div className="min-h-screen flex flex-col bg-gradient-to-br from-white via-slate-100 to-white font-sans">
+    <div className="min-h-screen flex flex-col bg-gradient-to-br from-blue-50 via-white to-blue-100 font-sans">
       <nav className="bg-white shadow-md fixed top-0 left-0 w-full h-16 flex items-center justify-between px-6 z-50">
-        <h1 className="text-2xl font-bold text-blue-600 tracking-tight cursor-pointer" onClick={() => navigate("/")}>PresentPro</h1>
+        <h1 className="text-2xl font-bold text-blue-700 tracking-tight cursor-pointer" onClick={() => navigate("/")}>PresentPro</h1>
         <button
           onClick={() => navigate("/", { state: { scrollToUpload: true } })}
-          className="text-sm text-gray-700 hover:underline"
+          className="text-sm text-blue-600 hover:underline"
         >Upload New Presentation</button>
       </nav>
 
-      <div className="flex flex-1 pt-16">
-        <aside className="w-72 bg-white border-r border-gray-200 shadow-sm">
-          <div className="p-4 border-b border-gray-200">
-            <div className="flex items-center gap-2 mb-1">
-              <Presentation className="h-5 w-5 text-blue-500" />
-              <h2 className="text-lg font-semibold text-gray-800">Slides</h2>
-            </div>
-            <p className="text-sm text-gray-500">{slides.length} slides</p>
-          </div>
-          <div className="p-4 overflow-y-auto">
+      <div className="flex flex-1 pt-16 px-4 pb-4">
+        <div className="flex w-full gap-4 p-6 rounded-3xl shadow-xl bg-gradient-to-br from-blue-50 via-white to-blue-100 border border-blue-100">
+          <div className="rounded-3xl shadow-xl bg-gradient-to-tr from-white via-blue-50 to-blue-100 border border-blue-100 p-4 w-72 overflow-y-auto scrollbar-hide">
             <SlideNavigation
               slides={slides}
               setCurrentSlideIndex={setCurrentSlideIndex}
               currentSlideIndex={currentSlideIndex}
             />
           </div>
-        </aside>
 
-        <main className="flex-1 flex flex-col gap-6 p-6">
-          <div
-            ref={slideContainerRef}
-            className={`relative flex justify-center items-center bg-white rounded-xl shadow transition-all duration-700 ease-in-out ${isFullScreen ? "h-screen w-screen p-0" : "h-[600px] p-8"}`}
-          >
-            {currentSlide ? (
-              <img
-                key={currentSlide.slideNumber} // ✅ force React to reload image
-                src={currentSlide.image}
-                alt={currentSlide.title}
-                className="max-h-full max-w-full object-contain rounded"
-              />
-            ) : (
-              <div className="text-center p-8">
-                <Presentation className="h-16 w-16 text-gray-300 mb-4" />
-                <p className="text-gray-500 text-lg">No slides available</p>
-                <p className="text-gray-400 text-sm">Upload to get started</p>
-              </div>
-            )}
-
-            <button
-              onClick={toggleFullScreen}
-              className="absolute top-4 right-4 bg-white/90 p-2 rounded-full shadow hover:bg-gray-50 transition backdrop-blur"
+          <main className="flex-1 flex flex-col gap-6 transition-opacity duration-700 ease-in-out animate-fade-in">
+            <div
+              ref={slideContainerRef}
+              className={`relative flex justify-center items-center rounded-3xl shadow-xl transition-all duration-700 ease-in-out backdrop-blur bg-gradient-to-tr from-white via-blue-50 to-blue-100 border border-blue-100 ${isFullScreen ? "h-screen w-screen p-0" : "h-[600px] p-8"}`}
             >
-              <Maximize2 className="h-5 w-5 text-gray-600" />
-            </button>
+              {currentSlide ? (
+                <img
+                  key={currentSlide.slideNumber}
+                  src={currentSlide.image}
+                  alt={currentSlide.title}
+                  className="max-h-full max-w-full object-contain rounded-xl shadow-md"
+                />
+              ) : (
+                <div className="text-center p-8">
+                  <Presentation className="h-16 w-16 text-blue-200 mb-4" />
+                  <p className="text-blue-500 text-lg">No slides available</p>
+                  <p className="text-blue-400 text-sm">Upload to get started</p>
+                </div>
+              )}
 
-            {slides.length > 1 && (
-              <>
-                <button
-                  onClick={handlePrevSlide}
-                  disabled={currentSlideIndex === 0}
-                  className="absolute left-4 p-3 rounded-full bg-white/90 hover:bg-gray-100 disabled:opacity-50"
-                >
-                  <ChevronLeft className="h-6 w-6 text-gray-700" />
-                </button>
-                <button
-                  onClick={handleNextSlide}
-                  disabled={currentSlideIndex === slides.length - 1}
-                  className="absolute right-4 p-3 rounded-full bg-white/90 hover:bg-gray-100 disabled:opacity-50"
-                >
-                  <ChevronRight className="h-6 w-6 text-gray-700" />
-                </button>
-              </>
-            )}
+              <button
+                onClick={toggleFullScreen}
+                className="absolute top-4 right-4 bg-white/90 p-2 rounded-full shadow hover:bg-blue-50 transition backdrop-blur"
+              >
+                <Maximize2 className="h-5 w-5 text-blue-600" />
+              </button>
 
-            <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 bg-white px-4 py-1 rounded-full shadow">
-              <p className="text-sm font-medium text-gray-700">
-                {currentSlideIndex + 1} / {slides.length}
-              </p>
+              {slides.length > 1 && (
+                <>
+                  <button
+                    onClick={handlePrevSlide}
+                    disabled={currentSlideIndex === 0}
+                    className="absolute left-4 p-3 rounded-full bg-white/90 hover:bg-blue-50 disabled:opacity-50"
+                  >
+                    <ChevronLeft className="h-6 w-6 text-blue-600" />
+                  </button>
+                  <button
+                    onClick={handleNextSlide}
+                    disabled={currentSlideIndex === slides.length - 1}
+                    className="absolute right-4 p-3 rounded-full bg-white/90 hover:bg-blue-50 disabled:opacity-50"
+                  >
+                    <ChevronRight className="h-6 w-6 text-blue-600" />
+                  </button>
+                </>
+              )}
+
+              <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 bg-white/80 px-4 py-1 rounded-full shadow">
+                <p className="text-sm font-medium text-blue-700">
+                  {currentSlideIndex + 1} / {slides.length}
+                </p>
+              </div>
             </div>
-          </div>
 
-          {currentSlide && presentationId && (
-            <div className="bg-white rounded-xl shadow-lg p-6 animate-fade-in">
+            {currentSlide && presentationId && (
               <SpeechEditor
                 slide={currentSlide}
                 slides={slides}
@@ -193,19 +180,14 @@ export function ShowSlide() {
                 pitch={pitch}
                 presentationId={presentationId}
               />
-            </div>
-          )}
-        </main>
+            )}
+          </main>
 
-        <aside className="w-80 bg-white border-l border-gray-200 shadow-sm animate-slide-in">
-          <div className="p-4 border-b border-gray-200">
-            <h2 className="text-lg font-semibold text-gray-800">Speech Controls</h2>
-          </div>
-          <div className="p-4">
+          <div className="w-80 animate-slide-in rounded-3xl shadow-xl bg-gradient-to-tr from-white via-blue-50 to-blue-100 border border-blue-100 p-4">
             {currentSlide && (
               <SpeechControls
                 slide={currentSlide}
-                slides={slides} // ✅ Pass the full slides array
+                slides={slides}
                 setVoiceTone={setVoiceTone}
                 setSpeed={setSpeed}
                 setPitch={setPitch}
@@ -219,7 +201,7 @@ export function ShowSlide() {
               />
             )}
           </div>
-        </aside>
+        </div>
       </div>
     </div>
   );

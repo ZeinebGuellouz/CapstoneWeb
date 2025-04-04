@@ -180,6 +180,7 @@ async def generate_speech(request: Request):
         previous_slides = body.get("previous_slides", [])
         current_slide = body.get("current_slide", {})
         slide_index = body.get("slide_index", 0)
+        voice_tone = body.get("voice_tone", "Formal")  # Default to "Formal" if not provided
 
         if not current_slide:
             return {"error": "No current slide provided"}
@@ -188,10 +189,11 @@ async def generate_speech(request: Request):
         language = "French" if any(word in first_slide_text.lower() for word in ["le", "la", "les", "un", "une", "est", "avec"]) else "English"
 
         prompt = (
-            f"You are an AI assistant generating **concise, natural-sounding** speech for a {language} presentation. "
-            f"Your speech should be **short, engaging, and directly relevant to the slide**, keeping it in **{language}**.\n"
-            "Avoid unnecessary introductions like 'Ladies and gentlemen' or 'Mesdames et messieurs' and repetitive information.\n\n"
-        )
+             f"You are an AI assistant generating a **{voice_tone.lower()}**, natural-sounding speech for a {language} presentation. "
+             f"Your speech should be short, engaging, and directly relevant to the slide, keeping it in {language}.\n"
+             f"Avoid unnecessary introductions like 'Ladies and gentlemen' or 'Mesdames et messieurs' and repetitive information.\n\n"
+)
+
 
         if previous_slides:
             prompt += f"The previous slides covered (in {language}):\n"
@@ -273,7 +275,7 @@ async def save_speech(request: Request, authorization: str = Header(...)):
         "speech": body.get("generated_speech"),
         "pitch": body.get("pitch", 1.0),
         "speed": body.get("speed", 1.0),
-        "tone": body.get("voice_tone", "Formal"),
+        "voice_tone": body.get("voice_tone", "Formal"),
         "text": body.get("text"),  # optional if user edited it
         "lastModifiedAt": firestore.SERVER_TIMESTAMP
     }

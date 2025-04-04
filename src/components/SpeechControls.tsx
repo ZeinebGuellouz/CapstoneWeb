@@ -260,26 +260,38 @@ export default function SpeechControls({
   };
 
   return (
-    <div className="p-6 bg-white dark:bg-gray-900 rounded-2xl shadow-xl border border-gray-200 dark:border-gray-700 space-y-6">
-      <h2 className="text-2xl font-bold text-gray-900 dark:text-white">Speech Assistant</h2>
+    <div className="p-6 bg-gradient-to-br from-blue-50 via-white to-blue-100 rounded-xl shadow-lg border border-blue-200 space-y-6">
+      <h2 className="text-2xl font-bold text-blue-900">🎤 Speech Assistant</h2>
       {loading ? (
-        <p className="text-gray-500 dark:text-gray-400">Loading settings...</p>
+        <p className="text-blue-500">Loading settings...</p>
       ) : (
         <>
           <div className="grid grid-cols-1 gap-4">
-            {/* Voice Controls */}
+            {/* Speech Style */}
             <div>
-              <label className="block text-sm font-medium">Voice Tone</label>
-              <select value={voiceTone} onChange={(e) => setVoiceTone?.(e.target.value)} className="w-full p-2 rounded">
-                <option>Formal</option>
-                <option>Casual</option>
-                <option>Enthusiastic</option>
+              <label className="block text-sm font-semibold text-blue-800">Speech Style</label>
+              <select
+                value={voiceTone}
+                onChange={(e) => setVoiceTone?.(e.target.value)}
+                className="w-full p-2 mt-1 rounded border border-blue-200 bg-white text-blue-900 focus:outline-none focus:ring-2 focus:ring-blue-400"
+              >
+                <option value="Formal">Formal</option>
+                <option value="Casual">Casual</option>
+                <option value="Enthusiastic">Enthusiastic</option>
               </select>
+              <p className="text-xs text-blue-600 mt-1 italic">
+                Affects how AI generates your speech when you click "Regenerate Speech"
+              </p>
             </div>
-
+  
+            {/* Voice */}
             <div>
-              <label className="block text-sm font-medium">Voice</label>
-              <select value={selectedVoice} onChange={(e) => setSelectedVoice(e.target.value)} className="w-full p-2 rounded">
+              <label className="block text-sm font-semibold text-blue-800">Voice</label>
+              <select
+                value={selectedVoice}
+                onChange={(e) => setSelectedVoice(e.target.value)}
+                className="w-full p-2 mt-1 rounded border border-blue-200 bg-white text-blue-900 focus:outline-none focus:ring-2 focus:ring-blue-400"
+              >
                 {availableVoices.map((voice) => (
                   <option key={voice.name} value={voice.name}>
                     {voice.name} ({voice.lang})
@@ -287,38 +299,92 @@ export default function SpeechControls({
                 ))}
               </select>
             </div>
-
+  
+            {/* Speed */}
             <div>
-              <label className="block text-sm font-medium">Speed: {speed.toFixed(1)}x</label>
-              <input type="range" min="0.5" max="2" step="0.1" value={speed} onChange={(e) => setSpeed?.(parseFloat(e.target.value))} className="w-full" />
+              <label className="block text-sm font-semibold text-blue-800">Speed: {speed.toFixed(1)}x</label>
+              <input
+                type="range"
+                min="0.5"
+                max="2"
+                step="0.1"
+                value={speed}
+                onChange={(e) => setSpeed?.(parseFloat(e.target.value))}
+                className="w-full accent-blue-600"
+              />
             </div>
-
+  
+            {/* Pitch */}
             <div>
-              <label className="block text-sm font-medium">Pitch: {pitch.toFixed(1)}</label>
-              <input type="range" min="0.5" max="2" step="0.1" value={pitch} onChange={(e) => setPitch?.(parseFloat(e.target.value))} className="w-full" />
+              <label className="block text-sm font-semibold text-blue-800">Pitch: {pitch.toFixed(1)}</label>
+              <input
+                type="range"
+                min="0.5"
+                max="2"
+                step="0.1"
+                value={pitch}
+                onChange={(e) => setPitch?.(parseFloat(e.target.value))}
+                className="w-full accent-blue-600"
+              />
             </div>
           </div>
-
+  
           {/* Controls */}
           <div className="grid grid-cols-2 gap-4 mt-4">
-            <button onClick={playAll} disabled={isPlaying} className="bg-green-500 text-white rounded p-2 disabled:opacity-50">▶️ Play All</button>
-            <button onClick={pause} disabled={!isPlaying} className="bg-yellow-500 text-white rounded p-2 disabled:opacity-50">⏸️ Pause</button>
-            <button onClick={resume} disabled={!isPaused} className="bg-blue-500 text-white rounded p-2 disabled:opacity-50">▶️ Resume</button>
-            <button onClick={stop} disabled={!isPlaying && !isPaused} className="bg-red-500 text-white rounded p-2 disabled:opacity-50">⏹️ Stop</button>
+            <button
+              onClick={playAll}
+              disabled={isPlaying}
+              className="bg-blue-600 hover:bg-blue-700 text-white rounded py-2 disabled:opacity-50"
+            >
+              ▶️ Play All
+            </button>
+            <button
+              onClick={pause}
+              disabled={!isPlaying}
+              className="bg-yellow-400 hover:bg-yellow-500 text-white rounded py-2 disabled:opacity-50"
+            >
+              ⏸️ Pause
+            </button>
+            <button
+              onClick={resume}
+              disabled={!isPaused}
+              className="bg-sky-500 hover:bg-sky-600 text-white rounded py-2 disabled:opacity-50"
+            >
+              ▶️ Resume
+            </button>
+            <button
+              onClick={stop}
+              disabled={!isPlaying && !isPaused}
+              className="bg-rose-500 hover:bg-rose-600 text-white rounded py-2 disabled:opacity-50"
+            >
+              ⏹️ Stop
+            </button>
           </div>
-
-          <button onClick={restart} className="w-full bg-purple-500 text-white rounded p-2 mt-2">🔁 Restart From Beginning</button>
-          <button onClick={handleSaveSpeech} className="w-full bg-indigo-500 text-white rounded p-2 mt-4">💾 Save Speech</button>
-
+  
+          <button
+            onClick={restart}
+            className="w-full bg-indigo-500 hover:bg-indigo-600 text-white rounded py-2 mt-2"
+          >
+            🔁 Restart From Beginning
+          </button>
+          <button
+            onClick={handleSaveSpeech}
+            className="w-full bg-blue-800 hover:bg-blue-900 text-white rounded py-2 mt-4"
+          >
+            💾 Save Speech
+          </button>
+  
           {isPlaying && (
             <p className="text-center text-sm text-green-600 mt-2">
               🔊 Speaking Slide {currentIndex + 1} of {totalSlides}
             </p>
           )}
-
-          {status && <p className="text-center text-sm mt-2">{status}</p>}
+  
+          {status && (
+            <p className="text-center text-sm mt-2 text-blue-700">{status}</p>
+          )}
         </>
       )}
     </div>
-  );
-}
+    );
+  }
