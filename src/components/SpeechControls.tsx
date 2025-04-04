@@ -41,6 +41,7 @@ export default function SpeechControls({
   const [selectedVoice, setSelectedVoice] = useState<string>("");
   const [isPaused, setIsPaused] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
+  const [playMode, setPlayMode] = useState<"all" | "single" | null>(null);
 
   const synthRef = useRef(window.speechSynthesis);
   const currentUtteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
@@ -105,12 +106,15 @@ export default function SpeechControls({
   useEffect(() => {
     if (!isPlaying) return;
   
+    // Prevent playAll from kicking in right after a single slide is played
+    if (playMode !== "all" || synthRef.current.speaking) return;
+
     // Give browser a short moment to register slide change
     setTimeout(() => {
       console.log("🔁 Now speaking slide", currentIndex);
       speakSlide(currentIndex);
     }, 300); // ⏱️ Small delay is key
-  }, [currentIndex, isPlaying]);
+  }, [currentIndex, isPlaying, playMode]);
   
   // ✅ Core TTS handler
   let hasRetried = false;
@@ -151,73 +155,80 @@ export default function SpeechControls({
     utterance.onend = () => {
       console.log(`✅ Finished slide ${index + 1}`);
       hasRetried = false;
-      handleNext(index);
+      if (playMode === "all") handleNext(index);
     };
-  
+    
     utterance.onerror = (e) => {
       console.error(`❌ Speech error on slide ${index + 1}:`, e.error);
       hasRetried = false;
-      handleNext(index); // don't call stop() here
+      if (playMode === "all") handleNext(index);
     };
+    
   
     currentUtteranceRef.current = utterance;
     synthRef.current.speak(utterance);
   };
   
 
-  const handleNext = (current: number) => {
-    if (!isPlaying) {
-      console.log("⏹️ Not playing, so stopping at", current);
-      return;
-    }
-  
-    const next = current + 1;
-    console.log("➡️ Going to slide", next);
-  
-    if (next < totalSlides) {
-      setCurrentSlideIndex(next);
-    } else {
-      console.log("✅ All slides done. Stopping.");
-      stop();
-    }
-  };
+const handleNext = (current: number) => {
+  if (playMode !== "all") return;
+
+  const next = current + 1;
+  console.log("➡️ Going to slide", next);
+
+  if (next < totalSlides) {
+    setCurrentSlideIndex(next);
+  } else {
+    console.log("✅ All slides done. Stopping.");
+    stop();
+  }
+};
   
   useEffect(() => {
     console.log("🎯 currentIndex updated to:", currentIndex);
   }, [currentIndex]);
     
 
-  const playSingleSlide = () => {
-    const text = speeches[currentIndex] || slides[currentIndex]?.text || "";
-    if (!text.trim()) return;
-  
-    const utterance = new SpeechSynthesisUtterance(text);
-    utterance.pitch = pitch;
-    utterance.rate = speed;
-  
-    const selected = availableVoices.find((v) => v.name === selectedVoice);
-    if (selected) utterance.voice = selected;
-  
-    utterance.onerror = (e) => {
-      console.error("❌ Single slide speech error:", e.error);
-    };
-  
-    synthRef.current.cancel(); // Stop any ongoing speech first
-    synthRef.current.speak(utterance);
+const playSingleSlide = () => {
+  const text = speeches[currentIndex] || slides[currentIndex]?.text || "";
+  if (!text.trim()) return;
+
+  // Cancel ongoing speaking or queued ones
+  synthRef.current.cancel();
+
+  const utterance = new SpeechSynthesisUtterance(text);
+  utterance.pitch = pitch;
+  utterance.rate = speed;
+
+  const selected = availableVoices.find((v) => v.name === selectedVoice);
+  if (selected) utterance.voice = selected;
+
+  // 🧠 Explicitly mark this is not a "playAll" session
+  setPlayMode("single");
+  setIsPlaying(true);
+  setIsPaused(false);
+
+
+  utterance.onstart = () => {
+    console.log("🎙️ Speaking single slide only");
   };
 
-  const playAll = () => {
-    const ensureVoicesReady = () => {
-      const voices = window.speechSynthesis.getVoices();
-      if (voices.length === 0) {
-        setTimeout(ensureVoicesReady, 100);
-      } else {
-        setIsPlaying(true);
-        speakSlide(currentIndex);
-      }
-    };
-    ensureVoicesReady();
+  utterance.onend = () => {
+    console.log("✅ Finished speaking this slide only");
   };
+
+  utterance.onerror = (e) => {
+    console.error("❌ Single slide speech error:", e.error);
+  };
+
+  synthRef.current.speak(utterance);
+};
+
+const playAll = () => {
+  setPlayMode("all");
+  setIsPlaying(true);
+  speakSlide(currentIndex);
+};
 
   const pause = () => {
     synthRef.current.pause();
@@ -382,11 +393,13 @@ export default function SpeechControls({
   </button>
 
   <button
-    onClick={playSingleSlide}
-    className="bg-blue-700 hover:bg-blue-800 text-white font-semibold py-2 rounded-xl shadow-sm transition"
-  >
-    🗣️ This Slide
-  </button>
+  onClick={playSingleSlide}
+  disabled={isPlaying}
+  className="bg-blue-700 hover:bg-blue-800 text-white font-semibold py-2 rounded-xl shadow-sm transition disabled:opacity-50 disabled:cursor-not-allowed"
+>
+  🗣️ This Slide
+</button>
+
   <button
     onClick={restart}
     className="bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-2 rounded-xl shadow-sm transition"
@@ -405,11 +418,18 @@ export default function SpeechControls({
   </button>
 </div>
 
-          {isPlaying && (
-            <p className="text-center text-sm text-green-600 mt-2">
-              🔊 Speaking Slide {currentIndex + 1} of {totalSlides}
-            </p>
-          )}
+{isPlaying && playMode === "all" && (
+  <p className="text-center text-sm text-green-600 mt-2">
+    🔊 Speaking Slide {currentIndex + 1} of {totalSlides}
+  </p>
+)}
+
+{playMode === "single" && (
+  <p className="text-center text-sm text-blue-600 mt-2">
+    🗣️ Playing this slide only (Slide {currentIndex + 1})
+  </p>
+)}
+
   
           {status && (
             <p className="text-center text-sm mt-2 text-blue-700">{status}</p>
