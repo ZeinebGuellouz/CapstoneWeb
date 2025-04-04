@@ -139,6 +139,8 @@ export default function SpeechControls({
       return;
     }
   
+  
+    
     const utterance = new SpeechSynthesisUtterance(text);
     utterance.pitch = pitch;
     utterance.rate = speed;
@@ -184,6 +186,25 @@ export default function SpeechControls({
     console.log("🎯 currentIndex updated to:", currentIndex);
   }, [currentIndex]);
     
+
+  const playSingleSlide = () => {
+    const text = speeches[currentIndex] || slides[currentIndex]?.text || "";
+    if (!text.trim()) return;
+  
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.pitch = pitch;
+    utterance.rate = speed;
+  
+    const selected = availableVoices.find((v) => v.name === selectedVoice);
+    if (selected) utterance.voice = selected;
+  
+    utterance.onerror = (e) => {
+      console.error("❌ Single slide speech error:", e.error);
+    };
+  
+    synthRef.current.cancel(); // Stop any ongoing speech first
+    synthRef.current.speak(utterance);
+  };
 
   const playAll = () => {
     const ensureVoicesReady = () => {
@@ -329,51 +350,61 @@ export default function SpeechControls({
             </div>
           </div>
   
-          {/* Controls */}
-          <div className="grid grid-cols-2 gap-4 mt-4">
-            <button
-              onClick={playAll}
-              disabled={isPlaying}
-              className="bg-blue-600 hover:bg-blue-700 text-white rounded py-2 disabled:opacity-50"
-            >
-              ▶️ Play All
-            </button>
-            <button
-              onClick={pause}
-              disabled={!isPlaying}
-              className="bg-yellow-400 hover:bg-yellow-500 text-white rounded py-2 disabled:opacity-50"
-            >
-              ⏸️ Pause
-            </button>
-            <button
-              onClick={resume}
-              disabled={!isPaused}
-              className="bg-sky-500 hover:bg-sky-600 text-white rounded py-2 disabled:opacity-50"
-            >
-              ▶️ Resume
-            </button>
-            <button
-              onClick={stop}
-              disabled={!isPlaying && !isPaused}
-              className="bg-rose-500 hover:bg-rose-600 text-white rounded py-2 disabled:opacity-50"
-            >
-              ⏹️ Stop
-            </button>
-          </div>
-  
-          <button
-            onClick={restart}
-            className="w-full bg-indigo-500 hover:bg-indigo-600 text-white rounded py-2 mt-2"
-          >
-            🔁 Restart From Beginning
-          </button>
-          <button
-            onClick={handleSaveSpeech}
-            className="w-full bg-blue-800 hover:bg-blue-900 text-white rounded py-2 mt-4"
-          >
-            💾 Save Speech
-          </button>
-  
+          <div className="grid grid-cols-2 gap-4 mt-6">
+  <button
+    onClick={playAll}
+    disabled={isPlaying}
+    className="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 rounded-xl shadow-sm transition disabled:opacity-50 disabled:cursor-not-allowed"
+  >
+    ▶️ Play All
+  </button>
+  <button
+    onClick={pause}
+    disabled={!isPlaying}
+    className="bg-blue-500 hover:bg-blue-600 text-white font-semibold py-2 rounded-xl shadow-sm transition disabled:opacity-50 disabled:cursor-not-allowed"
+  >
+    ⏸️ Pause
+  </button>
+
+  <button
+    onClick={resume}
+    disabled={!isPaused}
+    className="bg-blue-400 hover:bg-blue-500 text-white font-semibold py-2 rounded-xl shadow-sm transition disabled:opacity-50 disabled:cursor-not-allowed"
+  >
+    ▶️ Resume
+  </button>
+  <button
+    onClick={stop}
+    disabled={!isPlaying && !isPaused}
+    className="bg-blue-300 hover:bg-blue-400 text-white font-semibold py-2 rounded-xl shadow-sm transition disabled:opacity-50 disabled:cursor-not-allowed"
+  >
+    ⏹️ Stop
+  </button>
+
+  <button
+    onClick={playSingleSlide}
+    className="bg-blue-700 hover:bg-blue-800 text-white font-semibold py-2 rounded-xl shadow-sm transition"
+  >
+    🗣️ This Slide
+  </button>
+  <button
+    onClick={restart}
+    className="bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-2 rounded-xl shadow-sm transition"
+  >
+    🔁 Restart
+  </button>
+</div>
+
+{/* Save button stays full width below */}
+<div className="mt-6">
+  <button
+    onClick={handleSaveSpeech}
+    className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-semibold py-3 rounded-xl shadow-md transition"
+  >
+    💾 Save Speech
+  </button>
+</div>
+
           {isPlaying && (
             <p className="text-center text-sm text-green-600 mt-2">
               🔊 Speaking Slide {currentIndex + 1} of {totalSlides}
