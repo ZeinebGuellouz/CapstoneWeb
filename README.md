@@ -34,6 +34,7 @@ Actively under development. The system is being tested for demo deployment and r
 
 ## 📄 License
 
-This project is released under the Creative Commons Attribution-NonCommercial 4.0 International (CC BY-NC 4.0) license. See `LICENSE` for full details.
-[![License: CC BY-NC 4.0](https://img.shields.io/badge/License-CC%20BY--NC%204.0-lightgrey.svg)](https://creativecommons.org/licenses/by-nc/4.0/)
 
+This project is **not open source** and may not be used, shared, or modified without explicit permission from the author.
+
+For any collaboration or demo access, contact [zeineb.guellouz@medtech.tn](mailto:zeineb.guellouz@medtech.tn).
