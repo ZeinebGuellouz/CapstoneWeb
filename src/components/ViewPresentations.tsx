@@ -211,8 +211,8 @@ function ViewPresentations() {
                     {presentation.fileName}
                   </h3>
                   <p className="text-sm text-gray-500 mt-1">
-                    {presentation.createdAt
-                      ? new Date((presentation.createdAt._seconds || 0) * 1000).toLocaleString()
+                    {presentation.createdAt?._seconds
+                      ? new Date(presentation.createdAt._seconds * 1000).toLocaleString()
                       : "Upload date unknown"}
                   </p>
                 </div>

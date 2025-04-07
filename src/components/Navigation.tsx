@@ -104,9 +104,9 @@ export function Navigation({
                 }
               }}
             >
-              <span className="text-xl font-bold text-gray-800">
+                <span className="text-2xl font-bold text-blue-700 tracking-tight cursor-pointer">
                 PresentPro
-              </span>
+                </span>
             </div>
 
             <div className="hidden md:flex items-center space-x-8 relative">

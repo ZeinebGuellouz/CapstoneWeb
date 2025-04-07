@@ -377,15 +377,17 @@ async def get_user_presentations(authorization: str = Header(...)):
         data = doc.to_dict()
         presentation_id = doc.id
 
-        # Build thumbnail URL from the first slide of each presentation
-        thumbnail_url = data.get("thumbnailUrl")
+        # Convert Firestore timestamp to frontend-safe format
+        created_at = data.get("createdAt")
+        timestamp = {
+            "_seconds": int(created_at.timestamp())
+        } if created_at else None
 
         result.append({
             "id": presentation_id,
             "fileName": data.get("fileName"),
-            "createdAt": data.get("createdAt"),
+            "createdAt": timestamp,
             "thumbnailUrl": data.get("thumbnailUrl")
-
         })
 
     return result
