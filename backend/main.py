@@ -276,6 +276,7 @@ async def save_speech(request: Request, authorization: str = Header(...)):
         "pitch": body.get("pitch", 1.0),
         "speed": body.get("speed", 1.0),
         "voice_tone": body.get("voice_tone", "Formal"),
+        "voice": body.get("voice"),  # ✅ add this line
         "text": body.get("text"),  # optional if user edited it
         "lastModifiedAt": firestore.SERVER_TIMESTAMP
     }

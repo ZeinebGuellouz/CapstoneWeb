@@ -46,6 +46,8 @@ export default function SpeechControls({
 
   const synthRef = useRef(window.speechSynthesis);
   const currentUtteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
+  const wasManuallyStopped = useRef(false);
+
 
   useEffect(() => {
     const loadVoices = () => {
@@ -135,16 +137,27 @@ export default function SpeechControls({
     if (selected) utterance.voice = selected;
   
     utterance.onend = () => {
+      if (wasManuallyStopped.current) {
+        console.log("🛑 Speech manually stopped — skipping next slide");
+        wasManuallyStopped.current = false;
+        return;
+      }
       console.log(`✅ Finished slide ${index + 1}`);
       retriesRef.current = 0;
       if (isPlayAll) handleNext(index);
     };
-  
+    
     utterance.onerror = (e) => {
+      if (wasManuallyStopped.current) {
+        console.log("🛑 Speech manually stopped — skipping next slide");
+        wasManuallyStopped.current = false;
+        return;
+      }
       console.error(`❌ Speech error on slide ${index + 1}:`, e.error);
       retriesRef.current = 0;
       if (isPlayAll) handleNext(index);
     };
+    
   
     currentUtteranceRef.current = utterance;
 
@@ -185,11 +198,13 @@ export default function SpeechControls({
   };
 
   const stop = () => {
+    wasManuallyStopped.current = true;
     synthRef.current.cancel();
     setIsPaused(false);
     setIsPlaying(false);
     setIsPlayAll(false);
   };
+  
 
   const restart = () => {
     stop();
