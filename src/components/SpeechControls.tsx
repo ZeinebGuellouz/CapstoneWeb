@@ -41,30 +41,29 @@ export default function SpeechControls({
   const [selectedVoice, setSelectedVoice] = useState<string>("");
   const [isPaused, setIsPaused] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
-  const [playMode, setPlayMode] = useState<"all" | "single" | null>(null);
+  const [isPlayAll, setIsPlayAll] = useState(false);
+  const [voicesLoaded, setVoicesLoaded] = useState(false);
 
   const synthRef = useRef(window.speechSynthesis);
   const currentUtteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
 
-  // ✅ Load available voices
   useEffect(() => {
     const loadVoices = () => {
       const voices = window.speechSynthesis.getVoices();
-      setAvailableVoices(voices);
-      if (voices.length > 0 && !selectedVoice) {
-        setSelectedVoice(voices[0].name);
+      if (voices.length > 0) {
+        setAvailableVoices(voices);
+        if (!selectedVoice) setSelectedVoice(voices[0].name);
+        setVoicesLoaded(true);
       }
     };
-
     if (speechSynthesis.onvoiceschanged !== undefined) {
       speechSynthesis.onvoiceschanged = loadVoices;
     }
     loadVoices();
   }, []);
 
-  // ✅ Load speech settings from Firestore
   useEffect(() => {
-    if (!slide) return;
+    if (!slide || !voicesLoaded) return;
 
     const fetchSpeechSettings = async () => {
       setLoading(true);
@@ -73,16 +72,7 @@ export default function SpeechControls({
         if (!user) throw new Error("User not authenticated");
 
         const userId = user.uid;
-        const slideRef = doc(
-          db,
-          "users",
-          userId,
-          "presentations",
-          slide.presentationId,
-          "slides",
-          String(slide.slideNumber)
-        );
-
+        const slideRef = doc(db, "users", userId, "presentations", slide.presentationId, "slides", String(slide.slideNumber));
         const snapshot = await getDoc(slideRef);
         if (!snapshot.exists()) throw new Error("Slide data not found");
 
@@ -101,30 +91,24 @@ export default function SpeechControls({
     };
 
     fetchSpeechSettings();
-  }, [slide?.presentationId, slide?.slideNumber, availableVoices]);
+  }, [slide?.presentationId, slide?.slideNumber, voicesLoaded]);
 
   useEffect(() => {
-    if (!isPlaying) return;
-  
-    // Prevent playAll from kicking in right after a single slide is played
-    if (playMode !== "all" || synthRef.current.speaking) return;
+    if (!isPlaying || !isPlayAll || synthRef.current.speaking) return;
 
-    // Give browser a short moment to register slide change
     setTimeout(() => {
       console.log("🔁 Now speaking slide", currentIndex);
       speakSlide(currentIndex);
-    }, 300); // ⏱️ Small delay is key
-  }, [currentIndex, isPlaying, playMode]);
-  
-  // ✅ Core TTS handler
-  let hasRetried = false;
+    }, 300);
+  }, [currentIndex, isPlaying, isPlayAll]);
+
+  const retriesRef = useRef(0); // Track retries for the current utterance
 
   const speakSlide = (index: number) => {
     const text = speeches[index] || slides[index]?.text || "";
-  
     if (!text.trim()) {
       console.log(`⚠️ Skipping empty slide ${index + 1}`);
-      setTimeout(() => handleNext(index), 300);
+      handleNext(index);
       return;
     }
   
@@ -132,103 +116,61 @@ export default function SpeechControls({
       console.log("⏳ Still speaking. Cancelling...");
       synthRef.current.cancel();
   
-      if (!hasRetried) {
-        hasRetried = true;
-        setTimeout(() => speakSlide(index), 500);
+      if (retriesRef.current < 1) {
+        retriesRef.current++;
+        setTimeout(() => speakSlide(index), 300);
       } else {
-        console.warn("⚠️ Skipping due to repeated interruption.");
-        handleNext(index); // skip this slide to avoid infinite loop
+        console.warn("⚠️ Retried already. Moving to next slide.");
+        retriesRef.current = 0;
+        handleNext(index);
       }
-  
       return;
     }
   
-  
-    
     const utterance = new SpeechSynthesisUtterance(text);
     utterance.pitch = pitch;
     utterance.rate = speed;
   
-    const selected = availableVoices.find((v) => v.name === selectedVoice);
+    const selected = availableVoices.find(v => v.name === selectedVoice);
     if (selected) utterance.voice = selected;
   
     utterance.onend = () => {
       console.log(`✅ Finished slide ${index + 1}`);
-      hasRetried = false;
-      if (playMode === "all") handleNext(index);
+      retriesRef.current = 0;
+      if (isPlayAll) handleNext(index);
     };
-    
+  
     utterance.onerror = (e) => {
       console.error(`❌ Speech error on slide ${index + 1}:`, e.error);
-      hasRetried = false;
-      if (playMode === "all") handleNext(index);
+      retriesRef.current = 0;
+      if (isPlayAll) handleNext(index);
     };
-    
   
     currentUtteranceRef.current = utterance;
-    synthRef.current.speak(utterance);
+
+    // 🛠 FIX: delay to ensure voice is loaded properly
+    setTimeout(() => {
+      synthRef.current.speak(utterance);
+    }, 100); // 100ms works well across browsers
+  };
+  const handleNext = (current: number) => {
+    const next = current + 1;
+    if (next < totalSlides) {
+      setCurrentSlideIndex(next);
+    } else {
+      console.log("✅ All slides done. Stopping.");
+      stop();
+    }
   };
   
-
-const handleNext = (current: number) => {
-  if (playMode !== "all") return;
-
-  const next = current + 1;
-  console.log("➡️ Going to slide", next);
-
-  if (next < totalSlides) {
-    setCurrentSlideIndex(next);
-  } else {
-    console.log("✅ All slides done. Stopping.");
-    stop();
-  }
-};
+  const playAll = () => {
+    stop(); // ensure clean start
+    setIsPlayAll(true);
+    setIsPlaying(true);
+    retriesRef.current = 0;
+    speakSlide(currentIndex);
+  };
   
-  useEffect(() => {
-    console.log("🎯 currentIndex updated to:", currentIndex);
-  }, [currentIndex]);
-    
-
-const playSingleSlide = () => {
-  const text = speeches[currentIndex] || slides[currentIndex]?.text || "";
-  if (!text.trim()) return;
-
-  // Cancel ongoing speaking or queued ones
-  synthRef.current.cancel();
-
-  const utterance = new SpeechSynthesisUtterance(text);
-  utterance.pitch = pitch;
-  utterance.rate = speed;
-
-  const selected = availableVoices.find((v) => v.name === selectedVoice);
-  if (selected) utterance.voice = selected;
-
-  // 🧠 Explicitly mark this is not a "playAll" session
-  setPlayMode("single");
-  setIsPlaying(true);
-  setIsPaused(false);
-
-
-  utterance.onstart = () => {
-    console.log("🎙️ Speaking single slide only");
-  };
-
-  utterance.onend = () => {
-    console.log("✅ Finished speaking this slide only");
-  };
-
-  utterance.onerror = (e) => {
-    console.error("❌ Single slide speech error:", e.error);
-  };
-
-  synthRef.current.speak(utterance);
-};
-
-const playAll = () => {
-  setPlayMode("all");
-  setIsPlaying(true);
-  speakSlide(currentIndex);
-};
 
   const pause = () => {
     synthRef.current.pause();
@@ -246,6 +188,7 @@ const playAll = () => {
     synthRef.current.cancel();
     setIsPaused(false);
     setIsPlaying(false);
+    setIsPlayAll(false);
   };
 
   const restart = () => {
@@ -299,7 +242,6 @@ const playAll = () => {
       ) : (
         <>
           <div className="grid grid-cols-1 gap-4">
-            {/* Speech Style */}
             <div>
               <label className="block text-sm font-semibold text-blue-800">Speech Style</label>
               <select
@@ -311,12 +253,8 @@ const playAll = () => {
                 <option value="Casual">Casual</option>
                 <option value="Enthusiastic">Enthusiastic</option>
               </select>
-              <p className="text-xs text-blue-600 mt-1 italic">
-                Affects how AI generates your speech when you click "Regenerate Speech"
-              </p>
             </div>
-  
-            {/* Voice */}
+
             <div>
               <label className="block text-sm font-semibold text-blue-800">Voice</label>
               <select
@@ -331,8 +269,7 @@ const playAll = () => {
                 ))}
               </select>
             </div>
-  
-            {/* Speed */}
+
             <div>
               <label className="block text-sm font-semibold text-blue-800">Speed: {speed.toFixed(1)}x</label>
               <input
@@ -345,8 +282,7 @@ const playAll = () => {
                 className="w-full accent-blue-600"
               />
             </div>
-  
-            {/* Pitch */}
+
             <div>
               <label className="block text-sm font-semibold text-blue-800">Pitch: {pitch.toFixed(1)}</label>
               <input
@@ -360,82 +296,42 @@ const playAll = () => {
               />
             </div>
           </div>
-  
+
           <div className="grid grid-cols-2 gap-4 mt-6">
-  <button
-    onClick={playAll}
-    disabled={isPlaying}
-    className="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 rounded-xl shadow-sm transition disabled:opacity-50 disabled:cursor-not-allowed"
-  >
-    ▶️ Play All
-  </button>
-  <button
-    onClick={pause}
-    disabled={!isPlaying}
-    className="bg-blue-500 hover:bg-blue-600 text-white font-semibold py-2 rounded-xl shadow-sm transition disabled:opacity-50 disabled:cursor-not-allowed"
-  >
-    ⏸️ Pause
-  </button>
+            <button onClick={playAll} disabled={isPlaying || !voicesLoaded} className="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 rounded-xl shadow-sm transition disabled:opacity-50 disabled:cursor-not-allowed">
+              ▶️ Play All
+            </button>
+            <button onClick={pause} disabled={!isPlaying} className="bg-blue-500 hover:bg-blue-600 text-white font-semibold py-2 rounded-xl shadow-sm transition disabled:opacity-50 disabled:cursor-not-allowed">
+              ⏸️ Pause
+            </button>
+            <button onClick={resume} disabled={!isPaused} className="bg-blue-400 hover:bg-blue-500 text-white font-semibold py-2 rounded-xl shadow-sm transition disabled:opacity-50 disabled:cursor-not-allowed">
+              ▶️ Resume
+            </button>
+            <button onClick={stop} disabled={!isPlaying && !isPaused} className="bg-blue-300 hover:bg-blue-400 text-white font-semibold py-2 rounded-xl shadow-sm transition disabled:opacity-50 disabled:cursor-not-allowed">
+              ⏹️ Stop
+            </button>
+            <button onClick={restart} className="bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-2 rounded-xl shadow-sm transition">
+              🔁 Restart
+            </button>
+              </div>
 
-  <button
-    onClick={resume}
-    disabled={!isPaused}
-    className="bg-blue-400 hover:bg-blue-500 text-white font-semibold py-2 rounded-xl shadow-sm transition disabled:opacity-50 disabled:cursor-not-allowed"
-  >
-    ▶️ Resume
-  </button>
-  <button
-    onClick={stop}
-    disabled={!isPlaying && !isPaused}
-    className="bg-blue-300 hover:bg-blue-400 text-white font-semibold py-2 rounded-xl shadow-sm transition disabled:opacity-50 disabled:cursor-not-allowed"
-  >
-    ⏹️ Stop
-  </button>
+          <div className="mt-6">
+            <button onClick={handleSaveSpeech} className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-semibold py-3 rounded-xl shadow-md transition">
+              💾 Save Speech
+            </button>
+          </div>
 
-  <button
-  onClick={playSingleSlide}
-  disabled={isPlaying}
-  className="bg-blue-700 hover:bg-blue-800 text-white font-semibold py-2 rounded-xl shadow-sm transition disabled:opacity-50 disabled:cursor-not-allowed"
->
-  🗣️ This Slide
-</button>
+          {isPlaying && isPlayAll && (
+            <p className="text-center text-sm text-green-600 mt-2">
+              🔊 Speaking Slide {currentIndex + 1} of {totalSlides}
+            </p>
+          )}
 
-  <button
-    onClick={restart}
-    className="bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-2 rounded-xl shadow-sm transition"
-  >
-    🔁 Restart
-  </button>
-</div>
-
-{/* Save button stays full width below */}
-<div className="mt-6">
-  <button
-    onClick={handleSaveSpeech}
-    className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-semibold py-3 rounded-xl shadow-md transition"
-  >
-    💾 Save Speech
-  </button>
-</div>
-
-{isPlaying && playMode === "all" && (
-  <p className="text-center text-sm text-green-600 mt-2">
-    🔊 Speaking Slide {currentIndex + 1} of {totalSlides}
-  </p>
-)}
-
-{playMode === "single" && (
-  <p className="text-center text-sm text-blue-600 mt-2">
-    🗣️ Playing this slide only (Slide {currentIndex + 1})
-  </p>
-)}
-
-  
           {status && (
             <p className="text-center text-sm mt-2 text-blue-700">{status}</p>
           )}
         </>
       )}
     </div>
-    );
-  }
+  );
+}
