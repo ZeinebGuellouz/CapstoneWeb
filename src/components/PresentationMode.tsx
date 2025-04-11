@@ -1,143 +1,212 @@
-import { useState, useEffect, useRef } from "react";
-import { useNavigate } from "react-router-dom";
-import { ChevronRight, ChevronLeft, Pause, Play } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { ChevronLeft, ChevronRight } from "lucide-react";
 import { Slide } from "../types";
 
-interface PresentationModeProps {
+interface Props {
   slides: Slide[];
   currentIndex: number;
-  setCurrentIndex: React.Dispatch<React.SetStateAction<number>>;
+  setCurrentIndex: (index: number) => void;
   speeches: { [key: number]: string };
   voiceTone: string;
   speed: number;
   pitch: number;
   toggleFullScreen: () => void;
+  selectedVoice: string;
 }
 
-const PresentationMode = ({
+export default function PresentationMode({
   slides,
   currentIndex,
   setCurrentIndex,
   speeches,
   speed,
   pitch,
-}: PresentationModeProps) => {
-  const [showControls, setShowControls] = useState(false);
-  const [isPlaying, setIsPlaying] = useState(false);
+  toggleFullScreen,
+  selectedVoice,
+}: Props) {
   const synthRef = useRef(window.speechSynthesis);
-  const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
-  const timeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const navigate = useNavigate();
-  const [exitingFullScreen, setExitingFullScreen] = useState(false);
+  const currentUtteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
+  const shouldAutoPlayRef = useRef(false);
+
+  const [isPaused, setIsPaused] = useState(false);
+  const [isSpeaking, setIsSpeaking] = useState(false);
+  const [isPlayAll, setIsPlayAll] = useState(false);
+  const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([]);
+
+  const currentSlide = slides[currentIndex];
+  const text = speeches[currentIndex] || currentSlide?.text || "";
 
   useEffect(() => {
-    const show = () => {
-      setShowControls(true);
-      if (timeoutRef.current) clearTimeout(timeoutRef.current);
-      timeoutRef.current = setTimeout(() => setShowControls(false), 3000);
+    const loadVoices = () => {
+      const loadedVoices = window.speechSynthesis.getVoices();
+      if (loadedVoices.length) {
+        setVoices(loadedVoices);
+        console.log("✅ Voices loaded in fullscreen:", loadedVoices.map(v => v.name));
+      }
     };
-    window.addEventListener("mousemove", show);
-    window.addEventListener("keydown", show);
-    return () => {
-      window.removeEventListener("mousemove", show);
-      window.removeEventListener("keydown", show);
-    };
+    window.speechSynthesis.onvoiceschanged = loadVoices;
+    loadVoices();
   }, []);
 
   useEffect(() => {
-    const handleKeyPress = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        setExitingFullScreen(true);
-        document.exitFullscreen().catch(console.error);
-      }
-    };
-
-    const handleFullscreenChange = () => {
-      if (!document.fullscreenElement && exitingFullScreen) {
-        synthRef.current.cancel();
-        navigate("/viewer?presentationId=" + slides[0]?.presentationId);
-      }
-    };
-
-    window.addEventListener("keydown", handleKeyPress);
-    document.addEventListener("fullscreenchange", handleFullscreenChange);
-
-    return () => {
-      window.removeEventListener("keydown", handleKeyPress);
-      document.removeEventListener("fullscreenchange", handleFullscreenChange);
-    };
-  }, [navigate, slides, exitingFullScreen]);
+    setTimeout(() => {
+      window.focus();
+    }, 300);
+  }, []);
 
   useEffect(() => {
-    if (isPlaying) {
-      speakCurrentSlide();
-    }
-  }, [currentIndex, isPlaying]);
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.key === "ArrowRight") goNext();
+      if (e.key === "ArrowLeft") goBack();
+      if (e.key === "Escape") exitFullScreen();
+      if (e.key === "Enter") {
+        shouldAutoPlayRef.current = true;
+        setIsPlayAll(true);
+        playCurrentSlide();
+      }
+      if (e.key === " ") {
+        e.preventDefault();
+        if (isSpeaking && !isPaused) pause();
+        else if (isPaused) resume();
+      }
+    };
+    window.addEventListener("keydown", handleKey);
+    return () => window.removeEventListener("keydown", handleKey);
+  }, [currentIndex, isSpeaking, isPaused]);
 
-  const speakCurrentSlide = () => {
-    const text = speeches[currentIndex] || slides[currentIndex]?.text || "";
-    if (!text.trim()) return;
+  useEffect(() => {
+    if (shouldAutoPlayRef.current && isPlayAll && !isPaused && voices.length > 0) {
+      shouldAutoPlayRef.current = false;
+      playCurrentSlide();
+    }
+  }, [currentIndex, isPlayAll, isPaused, voices]);
+
+  const playCurrentSlide = () => {
     synthRef.current.cancel();
-    const utterance = new SpeechSynthesisUtterance(" " + text);
+  
+    if (!text.trim()) {
+      console.warn("⚠️ Slide text is empty. Skipping...");
+      return;
+    }
+  
+    if (!voices.length) {
+      console.warn("🕐 Voices not loaded yet. Aborting playback.");
+      return;
+    }
+  
+    const utterance = new SpeechSynthesisUtterance(text);
     utterance.pitch = pitch;
     utterance.rate = speed;
-    utterance.onend = () => handleNext();
-    utterance.onerror = () => handleNext();
-    utteranceRef.current = utterance;
-    synthRef.current.speak(utterance);
+  
+    console.log("🎯 selectedVoice prop received:", selectedVoice);
+  
+    const matchedVoice = voices.find((v) => v.name === selectedVoice);
+    if (matchedVoice) {
+      utterance.voice = matchedVoice;
+      console.log("✅ Exact match voice applied:", matchedVoice.name);
+      console.log("🧠 Full voice object applied:", matchedVoice);
+    } else {
+      console.warn("❌ No exact match found. Checking for partial matches...");
+      voices.forEach((v) => {
+        if (v.name.toLowerCase().includes(selectedVoice.toLowerCase())) {
+          console.warn(`⚠️ Partial match: ${v.name}`);
+        }
+      });
+      console.warn("⚠️ Falling back to default system voice.");
+    }
+  
+    utterance.onstart = () => {
+      console.log("🔊 Speech started");
+      setIsSpeaking(true);
+      setIsPaused(false);
+    };
+  
+    utterance.onend = () => {
+      console.log("✅ Speech ended");
+      setIsSpeaking(false);
+      setIsPaused(false);
+      if (isPlayAll && currentIndex < slides.length - 1) {
+        shouldAutoPlayRef.current = true;
+        setCurrentIndex(currentIndex + 1);
+      }
+    };
+  
+    utterance.onerror = (e) => {
+      console.error("❌ Speech error:", e.error);
+      setIsSpeaking(false);
+      setIsPaused(false);
+    };
+  
+    currentUtteranceRef.current = utterance;
+  
+    console.log("📢 Speaking now...");
+    setTimeout(() => synthRef.current.speak(utterance), 150);
+  };
+  
+  const pause = () => {
+    synthRef.current.pause();
+    setIsPaused(true);
   };
 
-  const handleNext = () => {
+  const resume = () => {
+    synthRef.current.resume();
+    setIsPaused(false);
+  };
+
+  const goNext = () => {
+    synthRef.current.cancel();
+    setIsPlayAll(false);
     if (currentIndex < slides.length - 1) {
       setCurrentIndex(currentIndex + 1);
-    } else {
-      setIsPlaying(false);
     }
   };
 
-  const handlePrev = () => {
+  const goBack = () => {
+    synthRef.current.cancel();
+    setIsPlayAll(false);
     if (currentIndex > 0) {
       setCurrentIndex(currentIndex - 1);
     }
   };
 
-  const handlePlay = () => {
-    setIsPlaying(true);
-  };
-
-  const handlePause = () => {
-    setIsPlaying(false);
+  const exitFullScreen = () => {
     synthRef.current.cancel();
+    setIsPlayAll(false);
+    toggleFullScreen();
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-black flex items-center justify-center">
-      <img
-        src={slides[currentIndex]?.image}
-        alt={slides[currentIndex]?.title}
-        className="max-h-full max-w-full object-contain"
-      />
-      {showControls && (
-        <div className="absolute bottom-8 w-full flex justify-center gap-4">
-          <button onClick={handlePrev} className="bg-white px-4 py-2 rounded shadow">
-            <ChevronLeft className="inline mr-1" /> Previous
-          </button>
-          {isPlaying ? (
-            <button onClick={handlePause} className="bg-green-600 text-white px-4 py-2 rounded shadow">
-              <Pause className="inline mr-1" /> Pause
-            </button>
-          ) : (
-            <button onClick={handlePlay} className="bg-green-600 text-white px-4 py-2 rounded shadow">
-              <Play className="inline mr-1" /> Start
-            </button>
-          )}
-          <button onClick={handleNext} className="bg-white px-4 py-2 rounded shadow">
-            <ChevronRight className="inline mr-1" /> Next
-          </button>
-        </div>
+    <div className="fixed inset-0 bg-black text-white flex items-center justify-center overflow-hidden">
+      {currentSlide && (
+        <img
+          src={currentSlide.image}
+          alt={currentSlide.title}
+          className="w-full h-full object-contain m-0 p-0"
+        />
       )}
+
+      <button
+        onClick={goBack}
+        className="absolute left-4 top-1/2 transform -translate-y-1/2 bg-white/10 hover:bg-white/20 p-3 rounded-full"
+      >
+        <ChevronLeft className="w-6 h-6 text-white" />
+      </button>
+
+      <button
+        onClick={goNext}
+        className="absolute right-4 top-1/2 transform -translate-y-1/2 bg-white/10 hover:bg-white/20 p-3 rounded-full"
+      >
+        <ChevronRight className="w-6 h-6 text-white" />
+      </button>
+
+      <div className="absolute bottom-6 text-sm text-white bg-white/10 px-4 py-2 rounded-xl">
+        Slide {currentIndex + 1} / {slides.length}
+        {isSpeaking && (
+          <span className="ml-4 text-green-400">
+            {isPaused ? "⏸️ Paused" : "🔊 Speaking"}
+          </span>
+        )}
+      </div>
     </div>
   );
-};
-
-export default PresentationMode;
+}

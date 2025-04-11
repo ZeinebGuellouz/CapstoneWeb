@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Routes, Route, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "./context/AuthContext";
 import { Navigation } from "./components/Navigation";
@@ -15,6 +15,7 @@ function App() {
   const navigate = useNavigate();
   const { user, logout } = useAuth();
   const [showLoginModal, setShowLoginModal] = useState(false);
+  const [isFullscreen, setIsFullscreen] = useState(false);
 
   const navigateToUpload = () => {
     if (location.pathname !== "/") {
@@ -27,15 +28,28 @@ function App() {
     }
   };
 
+  useEffect(() => {
+    const handleFullscreenChange = () => {
+      setIsFullscreen(!!document.fullscreenElement);
+    };
+
+    document.addEventListener("fullscreenchange", handleFullscreenChange);
+    return () => {
+      document.removeEventListener("fullscreenchange", handleFullscreenChange);
+    };
+  }, []);
+
   return (
     <div className="min-h-screen bg-white">
-      <Navigation
-        isViewerPage={location.pathname === "/viewer"}
-        navigateToUpload={navigateToUpload}
-        user={user}
-        onLogout={logout}
-        onShowLoginModal={() => setShowLoginModal(true)} // ✅ Shows modal
-      />
+      {!isFullscreen && (
+        <Navigation
+          isViewerPage={location.pathname === "/viewer"}
+          navigateToUpload={navigateToUpload}
+          user={user}
+          onLogout={logout}
+          onShowLoginModal={() => setShowLoginModal(true)}
+        />
+      )}
 
       <main className="relative">
         <Routes>
@@ -66,7 +80,6 @@ function App() {
         </Routes>
       </main>
 
-      {/* ✅ Insert this right before closing the outer div */}
       {showLoginModal && (
         <LoginModal
           onClose={() => setShowLoginModal(false)}

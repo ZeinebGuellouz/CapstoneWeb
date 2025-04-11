@@ -19,6 +19,8 @@ interface SpeechControlsProps {
   totalSlides: number;
   currentIndex: number;
   setCurrentSlideIndex: React.Dispatch<React.SetStateAction<number>>;
+  selectedVoice: string;
+  setSelectedVoice: (voice: string) => void;
 }
 
 export default function SpeechControls({
@@ -34,11 +36,12 @@ export default function SpeechControls({
   setCurrentSlideIndex,
   currentIndex,
   slides,
+  selectedVoice,
+  setSelectedVoice,
 }: SpeechControlsProps) {
   const [loading, setLoading] = useState(true);
   const [status, setStatus] = useState<string | null>(null);
   const [availableVoices, setAvailableVoices] = useState<SpeechSynthesisVoice[]>([]);
-  const [selectedVoice, setSelectedVoice] = useState<string>("");
   const [isPaused, setIsPaused] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
   const [isPlayAll, setIsPlayAll] = useState(false);
@@ -274,7 +277,7 @@ export default function SpeechControls({
               <label className="block text-sm font-semibold text-blue-800">Voice</label>
               <select
                 value={selectedVoice}
-                onChange={(e) => setSelectedVoice(e.target.value)}
+                onChange={(e) => setSelectedVoice?.(e.target.value)}                
                 className="w-full p-2 mt-1 rounded border border-blue-200 bg-white text-blue-900 focus:outline-none focus:ring-2 focus:ring-blue-400"
               >
                 {availableVoices.map((voice) => (
