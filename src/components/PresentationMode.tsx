@@ -51,6 +51,7 @@ export default function PresentationMode({
   useEffect(() => {
     setTimeout(() => {
       window.focus();
+      document.body.click();
     }, 300);
   }, []);
 
@@ -82,45 +83,32 @@ export default function PresentationMode({
   }, [currentIndex, isPlayAll, isPaused, voices]);
 
   const playCurrentSlide = () => {
-    synthRef.current.cancel();
-  
     if (!text.trim()) {
       console.warn("⚠️ Slide text is empty. Skipping...");
       return;
     }
-  
+
     if (!voices.length) {
       console.warn("🕐 Voices not loaded yet. Aborting playback.");
       return;
     }
-  
-    const utterance = new SpeechSynthesisUtterance(text);
+
+    const paddedText = "\u00A0" + text; // Non-breaking space fixes first word cut
+    const utterance = new SpeechSynthesisUtterance(paddedText);
     utterance.pitch = pitch;
     utterance.rate = speed;
-  
-    console.log("🎯 selectedVoice prop received:", selectedVoice);
-  
+
     const matchedVoice = voices.find((v) => v.name === selectedVoice);
     if (matchedVoice) {
       utterance.voice = matchedVoice;
-      console.log("✅ Exact match voice applied:", matchedVoice.name);
-      console.log("🧠 Full voice object applied:", matchedVoice);
-    } else {
-      console.warn("❌ No exact match found. Checking for partial matches...");
-      voices.forEach((v) => {
-        if (v.name.toLowerCase().includes(selectedVoice.toLowerCase())) {
-          console.warn(`⚠️ Partial match: ${v.name}`);
-        }
-      });
-      console.warn("⚠️ Falling back to default system voice.");
     }
-  
+
     utterance.onstart = () => {
       console.log("🔊 Speech started");
       setIsSpeaking(true);
       setIsPaused(false);
     };
-  
+
     utterance.onend = () => {
       console.log("✅ Speech ended");
       setIsSpeaking(false);
@@ -130,19 +118,26 @@ export default function PresentationMode({
         setCurrentIndex(currentIndex + 1);
       }
     };
-  
+
     utterance.onerror = (e) => {
       console.error("❌ Speech error:", e.error);
       setIsSpeaking(false);
       setIsPaused(false);
     };
-  
+
     currentUtteranceRef.current = utterance;
-  
-    console.log("📢 Speaking now...");
-    setTimeout(() => synthRef.current.speak(utterance), 150);
+
+    // Fix: speak dummy silent utterance first, then the real one
+    synthRef.current.cancel(); // Clear any queued speech
+    const dummy = new SpeechSynthesisUtterance(".");
+    dummy.volume = 0;
+    synthRef.current.speak(dummy);
+
+    setTimeout(() => {
+      synthRef.current.speak(utterance);
+    }, 150); // Let dummy flush first
   };
-  
+
   const pause = () => {
     synthRef.current.pause();
     setIsPaused(true);
