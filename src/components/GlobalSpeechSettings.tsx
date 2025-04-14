@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { auth, db } from "@/components/firebase/firebaseConfig";
-import { doc, getDoc, setDoc } from "firebase/firestore";
+import { doc, getDoc, setDoc, collection, getDocs } from "firebase/firestore";
 
 interface Props {
   presentationId: string;
@@ -22,20 +22,39 @@ export default function GlobalSpeechSettings({
   setPitch,
 }: Props) {
   const [status, setStatus] = useState("");
+  const [applyToAllSlides, setApplyToAllSlides] = useState(false);
 
   const saveSettings = async () => {
     const user = auth.currentUser;
     if (!user) return;
 
     try {
-      const ref = doc(db, "users", user.uid, "presentations", presentationId);
-      await setDoc(ref, {
+      const userRef = doc(db, "users", user.uid, "presentations", presentationId);
+
+      // Save global settings
+      await setDoc(userRef, {
         voice_tone: voiceTone,
         speed,
         pitch,
       }, { merge: true });
 
-      setStatus("✅ Settings saved!");
+      // Optionally apply to all slides
+      if (applyToAllSlides) {
+        const slidesRef = collection(db, "users", user.uid, "presentations", presentationId, "slides");
+        const slideDocs = await getDocs(slidesRef);
+
+        const updatePromises = slideDocs.docs.map(slideDoc =>
+          setDoc(slideDoc.ref, {
+            voice_tone: voiceTone,
+            speed,
+            pitch,
+          }, { merge: true })
+        );
+
+        await Promise.all(updatePromises);
+      }
+
+      setStatus("✅ Settings saved" + (applyToAllSlides ? " and applied to all slides!" : "!"));
       setTimeout(() => setStatus(""), 2500);
     } catch (err) {
       console.error("Error saving global settings:", err);
@@ -104,6 +123,18 @@ export default function GlobalSpeechSettings({
             className="w-full"
           />
         </div>
+      </div>
+
+      <div className="mt-2">
+        <label className="flex items-center space-x-2 text-sm text-gray-700">
+          <input
+            type="checkbox"
+            checked={applyToAllSlides}
+            onChange={(e) => setApplyToAllSlides(e.target.checked)}
+            className="form-checkbox text-blue-600"
+          />
+          <span>Apply to all slides</span>
+        </label>
       </div>
 
       <button

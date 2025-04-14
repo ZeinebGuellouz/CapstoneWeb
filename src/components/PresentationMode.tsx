@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { ChevronLeft, ChevronRight, Fullscreen, Play, Pause} from "lucide-react";
 import { Slide } from "../types";
 
 interface Props {
@@ -32,6 +32,7 @@ export default function PresentationMode({
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [isPlayAll, setIsPlayAll] = useState(false);
   const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([]);
+  const [showControls, setShowControls] = useState(true);
 
   const currentSlide = slides[currentIndex];
   const text = speeches[currentIndex] || currentSlide?.text || "";
@@ -46,6 +47,10 @@ export default function PresentationMode({
     };
     window.speechSynthesis.onvoiceschanged = loadVoices;
     loadVoices();
+
+    // Hide controls after 3 seconds of inactivity
+    const timer = setTimeout(() => setShowControls(false), 3000);
+    return () => clearTimeout(timer);
   }, []);
 
   useEffect(() => {
@@ -57,6 +62,7 @@ export default function PresentationMode({
 
   useEffect(() => {
     const handleKey = (e: KeyboardEvent) => {
+      setShowControls(true);
       if (e.key === "ArrowRight") goNext();
       if (e.key === "ArrowLeft") goBack();
       if (e.key === "Escape") exitFullScreen();
@@ -69,18 +75,32 @@ export default function PresentationMode({
         e.preventDefault();
         if (isSpeaking && !isPaused) pause();
         else if (isPaused) resume();
+        else playCurrentSlide();
       }
     };
+    
+    const handleMouseMove = () => {
+      setShowControls(true);
+      // Reset the timeout when mouse moves
+      const timer = setTimeout(() => setShowControls(false), 3000);
+      return () => clearTimeout(timer);
+    };
+    
     window.addEventListener("keydown", handleKey);
-    return () => window.removeEventListener("keydown", handleKey);
+    window.addEventListener("mousemove", handleMouseMove);
+    
+    return () => {
+      window.removeEventListener("keydown", handleKey);
+      window.removeEventListener("mousemove", handleMouseMove);
+    };
   }, [currentIndex, isSpeaking, isPaused]);
 
   useEffect(() => {
-    if (shouldAutoPlayRef.current && isPlayAll && !isPaused && voices.length > 0) {
-      shouldAutoPlayRef.current = false;
+    if (shouldAutoPlayRef.current && voices.length > 0) {
       playCurrentSlide();
     }
-  }, [currentIndex, isPlayAll, isPaused, voices]);
+  }, [currentIndex, voices]);
+    
 
   const playCurrentSlide = () => {
     if (!text.trim()) {
@@ -110,14 +130,16 @@ export default function PresentationMode({
     };
 
     utterance.onend = () => {
-      console.log("✅ Speech ended");
       setIsSpeaking(false);
       setIsPaused(false);
-      if (isPlayAll && currentIndex < slides.length - 1) {
-        shouldAutoPlayRef.current = true;
+    
+      if (shouldAutoPlayRef.current && currentIndex < slides.length - 1) {
         setCurrentIndex(currentIndex + 1);
+      } else {
+        shouldAutoPlayRef.current = false; // Stop only after last slide
       }
     };
+    
 
     utterance.onerror = (e) => {
       console.error("❌ Speech error:", e.error);
@@ -170,36 +192,128 @@ export default function PresentationMode({
     toggleFullScreen();
   };
 
+ 
+
+  const togglePlay = () => {
+    if (isSpeaking) {
+      if (isPaused) {
+        resume();
+      } else {
+        pause();
+      }
+    } else {
+      shouldAutoPlayRef.current = true;
+      playCurrentSlide();
+    }
+  };
+  
+
+ 
+
+  // Calculate progress for progress bar
+  const progress = ((currentIndex + 1) / slides.length) * 100;
+  
   return (
-    <div className="fixed inset-0 bg-black text-white flex items-center justify-center overflow-hidden">
-      {currentSlide && (
-        <img
-          src={currentSlide.image}
-          alt={currentSlide.title}
-          className="w-full h-full object-contain m-0 p-0"
-        />
-      )}
+    <div 
+      className="fixed inset-0 bg-black text-white flex flex-col items-center justify-center overflow-hidden"
+      onClick={() => setShowControls(true)}
+    >
+      {/* Slide content */}
+      <div className="relative w-full h-full flex items-center justify-center">
+        {currentSlide && (
+          <img
+            src={currentSlide.image}
+            alt={currentSlide.title}
+            className="w-full h-full object-contain m-0 p-0"
+          />
+        )}
+      </div>
+      
+      {/* Animated gradient progress bar at the top */}
+      <div className="absolute top-0 left-0 w-full h-1 bg-gray-800">
+        <div 
+          className="h-full bg-gradient-to-r from-blue-500 to-purple-500 transition-all duration-300 ease-out"
+          style={{ width: `${progress}%` }}
+        ></div>
+      </div>
+      
+      {/* Controls container that fades in/out */}
+      <div className={`absolute inset-0 pointer-events-none transition-opacity duration-300 ${showControls ? 'opacity-100' : 'opacity-0'}`}>
+        {/* Navigation buttons */}
+        <button
+          onClick={(e) => { e.stopPropagation(); goBack(); }}
+          className="absolute left-4 top-1/2 transform -translate-y-1/2 bg-black/40 hover:bg-black/60 p-4 rounded-full backdrop-blur-sm border border-white/10 pointer-events-auto transition-all duration-200 hover:scale-110"
+        >
+          <ChevronLeft className="w-6 h-6 text-white" />
+        </button>
 
-      <button
-        onClick={goBack}
-        className="absolute left-4 top-1/2 transform -translate-y-1/2 bg-white/10 hover:bg-white/20 p-3 rounded-full"
-      >
-        <ChevronLeft className="w-6 h-6 text-white" />
-      </button>
-
-      <button
-        onClick={goNext}
-        className="absolute right-4 top-1/2 transform -translate-y-1/2 bg-white/10 hover:bg-white/20 p-3 rounded-full"
-      >
-        <ChevronRight className="w-6 h-6 text-white" />
-      </button>
-
-      <div className="absolute bottom-6 text-sm text-white bg-white/10 px-4 py-2 rounded-xl">
-        Slide {currentIndex + 1} / {slides.length}
+        <button
+          onClick={(e) => { e.stopPropagation(); goNext(); }}
+          className="absolute right-4 top-1/2 transform -translate-y-1/2 bg-black/40 hover:bg-black/60 p-4 rounded-full backdrop-blur-sm border border-white/10 pointer-events-auto transition-all duration-200 hover:scale-110"
+        >
+          <ChevronRight className="w-6 h-6 text-white" />
+        </button>
+        
+        {/* Bottom controls bar */}
+        <div className="absolute bottom-6 left-1/2 transform -translate-x-1/2 bg-black/40 backdrop-blur-md border border-white/10 px-6 py-3 rounded-full flex items-center gap-4 pointer-events-auto">
+          {/* Slide counter */}
+          <div className="text-sm font-medium mr-2">
+            {currentIndex + 1} <span className="text-gray-400">/ {slides.length}</span>
+          </div>
+          
+          {/* Divider */}
+          <div className="h-6 w-px bg-white/20"></div>
+          
+          {/* Voice controls */}
+          <div className="flex items-center gap-2">
+            {isSpeaking ? (
+              isPaused ? (
+                <button 
+                  onClick={(e) => { e.stopPropagation(); togglePlay(); }}
+                  className="p-2 hover:bg-white/10 rounded-full transition-colors"
+                >
+                  <Play className="w-5 h-5 text-green-400" />
+                </button>
+              ) : (
+                <button 
+                  onClick={(e) => { e.stopPropagation(); togglePlay(); }}
+                  className="p-2 hover:bg-white/10 rounded-full transition-colors"
+                >
+                  <Pause className="w-5 h-5 text-green-400" />
+                </button>
+              )
+            ) : (
+              <button 
+                onClick={(e) => { e.stopPropagation(); togglePlay(); }}
+                className="p-2 hover:bg-white/10 rounded-full transition-colors"
+              >
+                <Play className="w-5 h-5" />
+              </button>
+            )}
+            
+           
+            
+           
+          </div>
+          
+          {/* Divider */}
+          <div className="h-6 w-px bg-white/20"></div>
+          
+          {/* Exit fullscreen button */}
+          <button 
+            onClick={(e) => { e.stopPropagation(); exitFullScreen(); }}
+            className="p-2 hover:bg-white/10 rounded-full transition-colors"
+          >
+            <Fullscreen className="w-5 h-5" />
+          </button>
+        </div>
+        
+        {/* Speaking status overlay */}
         {isSpeaking && (
-          <span className="ml-4 text-green-400">
-            {isPaused ? "⏸️ Paused" : "🔊 Speaking"}
-          </span>
+          <div className="absolute top-6 right-6 bg-black/40 backdrop-blur-sm border border-white/10 px-3 py-1.5 rounded-full text-sm font-medium flex items-center gap-2 pointer-events-auto">
+            <span className={`w-2 h-2 rounded-full ${isPaused ? 'bg-yellow-500' : 'bg-green-500 animate-pulse'}`}></span>
+            {isPaused ? "Audio Paused" : "Speaking"}
+          </div>
         )}
       </div>
     </div>
