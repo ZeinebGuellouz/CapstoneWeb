@@ -29,6 +29,7 @@ export interface Slide {
   title: string;
   presentationId: string; // ✅ Add this property
   slideNumber: number; // ✅ Add this property
+  avatar?: string;
 }
 
 import { LucideProps } from "lucide-react";

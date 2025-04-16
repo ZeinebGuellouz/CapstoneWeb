@@ -26,6 +26,8 @@ export function Navigation({
   const [showProfile, setShowProfile] = React.useState(false);
   const profileRef = React.useRef<HTMLDivElement | null>(null);
   const { loading } = useAuth();
+  const [refreshedPhotoURL, setRefreshedPhotoURL] = React.useState<string | null>(user?.photoURL || null);
+
 
   const getInitials = (name: string | null) => {
     if (!name) return "U";
@@ -64,10 +66,10 @@ export function Navigation({
       avatarUrl = user?.photoURL || null;
     }
   
-    if (user && avatarUrl && user.providerId !== "password") {
+    if (user && refreshedPhotoURL && user.providerId !== "password") {
       return (
         <img
-          src={avatarUrl}
+          src={refreshedPhotoURL}
           alt="Avatar"
           className="w-10 h-10 object-cover rounded-full"
           onError={(e) => {

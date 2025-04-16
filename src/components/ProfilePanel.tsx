@@ -37,13 +37,9 @@ export const ProfilePanel: React.FC<ProfilePanelProps> = ({ user, onLogout }) =>
   };
 
   const renderAvatar = () => {
-    const avatarUrl =
-        user.providerId === "facebook.com" && user.providerUid
-             ? `https://graph.facebook.com/${user.providerUid}/picture?type=large`
-             : user.photoURL;
-
-
-    if (avatarUrl && user.providerId !== "password") {
+    const avatarUrl = user.photoURL;
+  
+    if (avatarUrl) {
       return (
         <img
           src={avatarUrl}
@@ -56,14 +52,14 @@ export const ProfilePanel: React.FC<ProfilePanelProps> = ({ user, onLogout }) =>
         />
       );
     }
-
+  
     return (
       <div className="w-16 h-16 rounded-full bg-gray-300 flex items-center justify-center text-xl font-bold text-gray-700">
         {getInitials(user.displayName, user.email)}
       </div>
     );
   };
-
+  
   return (
     <div className="bg-white shadow-md rounded-lg p-6 max-w-sm mx-auto">
       <div className="flex items-center space-x-4">

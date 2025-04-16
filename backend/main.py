@@ -189,10 +189,11 @@ async def generate_speech(request: Request):
         language = "French" if any(word in first_slide_text.lower() for word in ["le", "la", "les", "un", "une", "est", "avec"]) else "English"
 
         prompt = (
-             f"You are an AI assistant generating a **{voice_tone.lower()}**, natural-sounding speech for a {language} presentation. "
-             f"Your speech should be short, engaging, and directly relevant to the slide, keeping it in {language}.\n"
-             f"Avoid unnecessary introductions like 'Ladies and gentlemen' or 'Mesdames et messieurs' and repetitive information.\n\n"
-)
+            f"You are an AI assistant helping narrate a slide in a {language} presentation. "
+            f"Focus only on the current slide, without repeating previous content or introducing generic phrases. "
+            f"Keep it {voice_tone.lower()}, clear, and between 3 to 5 concise sentences. "
+            f"Do not start with greetings like 'Ladies and gentlemen.' Avoid phrases like 'Welcome to the presentation.'\n\n"
+        )
 
 
         if previous_slides:
@@ -460,6 +461,38 @@ async def delete_presentations_batch(
         return {"message": "Batch deletion successful"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+class QARequest(BaseModel):
+    slide_text: str
+    question: str
+
+@app.post("/ask")
+async def ask_question(data: QARequest):
+    prompt = (
+        f"You are an AI assistant for live presentations. "
+        f"Answer audience questions using only the information from the current slide, avoiding speculation or generic introductions.\n\n"
+        f"---\n"
+        f"Slide:\n\"{data.slide_text}\"\n"
+        f"---\n"
+        f"Question:\n\"{data.question}\"\n\n"
+        f"Respond briefly and professionally (2–3 sentences max), in the same language as the slide content. "
+        f"Do not say 'Ladies and gentlemen' or repeat the slide title. Stay focused only on the question context."
+    )
+
+    try:
+        response = requests.post(
+            "http://localhost:11434/api/generate",
+            json={
+                "model": "mistral",
+                "prompt": prompt,
+                "stream": False,
+                "max_tokens": 200
+            }
+        )
+        response.raise_for_status()
+        answer = response.json().get("response", "").strip()
+        return {"answer": answer}
+    except Exception as e:
+        return {"error": f"Failed to get answer: {str(e)}"}
 
 
 @app.get("/")
