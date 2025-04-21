@@ -106,9 +106,18 @@ export function Navigation({
                 }
               }}
             >
-              <span className="text-xl font-bold text-gray-800">
+              <h1
+                className="text-2xl font-bold text-blue-700 tracking-tight cursor-pointer"
+                onClick={() => {
+                  if (window.location.pathname === "/") {
+                    document.getElementById("hero")?.scrollIntoView({ behavior: "smooth" });
+                  } else {
+                    window.location.href = "/";
+                  }
+                }}
+              >
                 PresentPro
-              </span>
+              </h1>
             </div>
 
             <div className="hidden md:flex items-center space-x-8 relative">

@@ -39,14 +39,12 @@ export default function PresentationMode({
   const [answer, setAnswer] = useState("");
   const [qaHistory, setQaHistory] = useState<{ question: string, answer: string }[]>([]);
   const [voicesReady, setVoicesReady] = useState(false);
-  const [avatarPulse, setAvatarPulse] = useState(false); // For avatar speaking animation
+  const [avatarPulse] = useState(false); // For avatar speaking animation
   const videoRef = useRef<HTMLVideoElement | null>(null);
 
   const currentSlide = slides[currentIndex];
   const text = speeches[currentIndex] || currentSlide?.text || "";
   
-  const defaultAvatar = "/placeholder.svg";
-  const currentAvatar = currentSlide?.avatar || defaultAvatar;
 
  
 
@@ -424,7 +422,7 @@ export default function PresentationMode({
                 loop
                 muted
                 playsInline
-                className={`h-60 w-60 object-cover transition-all duration-500
+                className={`h-60 w-40 object-cover transition-all duration-500
                 ${isPaused ? 'grayscale opacity-80' : 'grayscale-0 opacity-100'}
                 `}
               />
