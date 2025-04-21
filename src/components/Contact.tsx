@@ -18,7 +18,7 @@ export function Contact() {
     <div id="contact" className="py-24 bg-white">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="text-center animate-fade-in">
-          <h2 className="text-3xl font-extrabold text-primary sm:text-4xl">
+          <h2 className="text-3xl font-extrabold text-blue-700 sm:text-4xl">
             Contact Us
           </h2>
           <p className="mt-4 text-xl text-gray-600">
@@ -72,7 +72,7 @@ export function Contact() {
 
             <button
               type="submit"
-              className="w-full flex justify-center items-center py-3 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-primary hover:bg-primary-light focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary transition-all duration-200 hover-scale"
+              className="w-full flex justify-center items-center py-3 px-6 text-white text-base font-semibold bg-blue-700 hover:bg-blue-800 rounded-lg shadow-md transition-all duration-300 transform hover:scale-105 focus:outline-none focus:ring-4 focus:ring-blue-300"
             >
               Send Message
               <Send className="ml-2" size={16} />

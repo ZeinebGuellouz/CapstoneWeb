@@ -86,7 +86,7 @@ export function Upload() {
     <div id="upload" className="py-24 bg-gray-50">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="text-center animate-fade-in">
-          <h2 className="text-3xl font-extrabold text-primary sm:text-4xl">
+          <h2 className="text-3xl font-extrabold text-blue-700 sm:text-4xl">
             Upload Your Presentation
           </h2>
           <p className="mt-4 text-xl text-gray-600">
@@ -96,7 +96,7 @@ export function Upload() {
 
         <div className="mt-12 max-w-lg mx-auto animate-scale-in">
           <div
-            className={`relative rounded-lg border-2 border-dashed p-12 text-center transition-all duration-200 ${
+            className={`relative rounded-lg border-2 border-dashed p-12 text-center transition-all duration-200  ${
               dragActive ? "border-primary bg-primary/5" : "border-gray-300"
             }`}
             onDragEnter={handleDrag}
@@ -122,7 +122,7 @@ export function Upload() {
               </div>
               <button
                 type="button"
-                className="relative cursor-pointer rounded-md font-medium text-primary focus:outline-none"
+                className="relative cursor-pointer rounded-md font-medium text-blue-700 focus:outline-none"
                 onClick={openFileDialog}
               >
                 {file ? file.name : "Upload a file"}

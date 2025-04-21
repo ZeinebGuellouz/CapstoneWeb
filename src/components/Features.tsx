@@ -34,7 +34,7 @@ export function Features() {
     <div id="features" className="py-24 bg-white">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="text-center animate-fade-in">
-          <h2 className="text-3xl font-extrabold text-primary sm:text-4xl">
+          <h2 className="text-3xl font-extrabold text-blue-700 sm:text-4xl">
             Powerful Features
           </h2>
           <p className="mt-4 text-xl text-gray-600">
@@ -53,7 +53,7 @@ export function Features() {
                   style={{ animationDelay: `${0.2 * index}s` }}
                 >
                   <div
-                    className="absolute feature-icon-container flex h-12 w-12 items-center justify-center rounded-xl bg-primary text-white"
+                    className="absolute feature-icon-container flex h-12 w-12 items-center justify-center rounded-xl bg-blue-700 text-white"
                     style={{ animationDelay: `${0.5 * index}s` }}
                   >
                     {/* Render the icon as a component */}
