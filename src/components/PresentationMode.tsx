@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { ChevronLeft, ChevronRight, Fullscreen, Play, Pause, MessageCircle, X } from "lucide-react";
 import { Slide } from "../types";
+import Lottie from "lottie-react";
+import robotSpeakingAnimation from "./GCuPF5kg78.json";
 
 interface Props {
   slides: Slide[];
@@ -39,10 +41,31 @@ export default function PresentationMode({
   const [answer, setAnswer] = useState("");
   const [qaHistory, setQaHistory] = useState<{ question: string, answer: string }[]>([]);
   const [voicesReady, setVoicesReady] = useState(false);
-
+  const [avatarPulse, setAvatarPulse] = useState(false); // For avatar speaking animation
 
   const currentSlide = slides[currentIndex];
   const text = speeches[currentIndex] || currentSlide?.text || "";
+  
+  // Default avatar to use if none is provided for a slide
+  const defaultAvatar = "/placeholder.svg";
+  const currentAvatar = currentSlide?.avatar || defaultAvatar;
+
+  // Function to animate the avatar while speaking
+  useEffect(() => {
+    let pulseInterval: NodeJS.Timeout;
+    
+    if (isSpeaking && !isPaused) {
+      pulseInterval = setInterval(() => {
+        setAvatarPulse(prev => !prev);
+      }, 500); // Pulse every 500ms while speaking
+    } else {
+      setAvatarPulse(false);
+    }
+    
+    return () => {
+      if (pulseInterval) clearInterval(pulseInterval);
+    };
+  }, [isSpeaking, isPaused]);
 
   const speakAnswer = (answer: string, callback?: () => void) => {
     const utterance = new SpeechSynthesisUtterance(answer);
@@ -109,27 +132,25 @@ export default function PresentationMode({
     setQuestion("");
   };
   
-
   useEffect(() => {
     const loadVoices = () => {
-      const voices = window.speechSynthesis.getVoices();
-      if (voices.length > 0) {
-        setVoices(voices);
+      const loadedVoices = window.speechSynthesis.getVoices();
+      if (loadedVoices.length > 0) {
+        setVoices(loadedVoices);
         setVoicesReady(true);
-        console.log("✅ Voices loaded:", voices.map(v => v.name));
+        console.log("✅ Voices loaded:", loadedVoices.map(v => v.name));
       } else {
         console.warn("🕐 Voices not ready. Retrying...");
-        setTimeout(loadVoices, 300); // retry after 300ms
+        setTimeout(loadVoices, 300);
       }
     };
   
-    // First set up the listener, then call once
+    // Attach listener and load once
     window.speechSynthesis.onvoiceschanged = loadVoices;
     loadVoices();
-  
-    const timer = setTimeout(() => setShowControls(false), 3000);
-    return () => clearTimeout(timer);
   }, []);
+  
+
   
 
   useEffect(() => {
@@ -218,26 +239,29 @@ export default function PresentationMode({
     }
   }, [voicesReady]);
   
-
   const playCurrentSlide = (overrideVoices?: SpeechSynthesisVoice[]) => {
     if (!text.trim()) {
       console.warn("⚠️ Slide text is empty. Skipping...");
       return;
     }
   
+    const loadedVoices = window.speechSynthesis.getVoices();
+  
+    // 🔁 Voice readiness handling (retry only once if not yet ready)
+    if (!voicesReady || loadedVoices.length === 0) {
+      console.warn("🕐 Voices not ready. Aborting playback.");
+      return;
+    }
+    
+  
     const availableVoices = overrideVoices?.length
       ? overrideVoices
       : voices.length
       ? voices
-      : window.speechSynthesis.getVoices();
-  
-    if (!availableVoices.length) {
-      console.warn("🕐 Voices not loaded yet. Aborting playback.");
-      return;
-    }
+      : loadedVoices;
   
     if (voices.length === 0 && availableVoices.length > 0) {
-      setVoices(availableVoices); // patch global voices state if needed
+      setVoices(availableVoices); // Patch global voices state
     }
   
     const paddedText = "\u00A0" + text;
@@ -248,6 +272,9 @@ export default function PresentationMode({
     const matchedVoice = availableVoices.find((v) => v.name === selectedVoice);
     if (matchedVoice) {
       utterance.voice = matchedVoice;
+      console.log("🎙 Using voice:", matchedVoice.name);
+    } else {
+      console.warn("⚠️ No matched voice. Using default.");
     }
   
     utterance.onstart = () => {
@@ -257,6 +284,7 @@ export default function PresentationMode({
     };
   
     utterance.onend = () => {
+      console.log("✅ Speech ended");
       setIsSpeaking(false);
       setIsPaused(false);
       if (shouldAutoPlayRef.current && currentIndex < slides.length - 1) {
@@ -274,16 +302,11 @@ export default function PresentationMode({
   
     currentUtteranceRef.current = utterance;
     synthRef.current.cancel();
-    const dummy = new SpeechSynthesisUtterance(".");
-    dummy.volume = 0;
-    synthRef.current.speak(dummy);
   
-    setTimeout(() => {
-      synthRef.current.speak(utterance);
-    }, 150);
+    // 🧼 Removed dummy utterance
+    synthRef.current.speak(utterance);
   };
   
-
   const pause = () => {
     synthRef.current.pause();
     setIsPaused(true);
@@ -350,6 +373,43 @@ export default function PresentationMode({
           </div>
         )}
       </div>
+      
+      {/* Avatar component - positioned in the bottom right corner */}
+      {isSpeaking && (
+        <div className={`absolute bottom-32 right-8 transition-all duration-300 ${showControls ? 'opacity-100 translate-y-0' : 'opacity-90 translate-y-4'}`}>
+          <div className={`relative ${avatarPulse ? 'scale-105' : 'scale-100'} transition-transform duration-300`}>
+            <div className="absolute -inset-1 bg-gradient-to-r from-blue-500 to-indigo-600 rounded-full opacity-70 blur-md"></div>
+            <Lottie
+              animationData={robotSpeakingAnimation}
+              loop
+              autoplay={isSpeaking && !isPaused}
+              style={{ height: 80, width: 80 }}
+              className={`rounded-full border-2 ${isPaused ? 'border-amber-500' : 'border-blue-400'} shadow-lg shadow-blue-500/20`}
+              rendererSettings={{
+                preserveAspectRatio: "xMidYMid slice"
+              }}
+            />
+            
+            {/* Speaking indicator waves */}
+            {isSpeaking && !isPaused && (
+              <div className="absolute -bottom-1 -right-1 flex items-center justify-center">
+                <span className="relative flex h-6 w-6">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-6 w-6 bg-blue-500 items-center justify-center text-white text-xs">
+                    <span className="w-1.5 h-1.5 bg-white rounded-full"></span>
+                  </span>
+                </span>
+              </div>
+            )}
+            
+            {isPaused && (
+              <div className="absolute -bottom-1 -right-1 h-6 w-6 bg-amber-500 rounded-full flex items-center justify-center">
+                <span className="w-2 h-2 bg-white rounded-full"></span>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
       
       {/* Animated gradient progress bar at the top */}
       <div className="absolute top-0 left-0 w-full h-1.5 bg-gray-800/30">
@@ -441,7 +501,6 @@ export default function PresentationMode({
         )}
       </div>
 
-      {/* Question input modal */}
       {showQAInput && (
         <div className="absolute inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50" onClick={(e) => e.stopPropagation()}>
           <div className="bg-gray-900/80 border border-indigo-500/20 p-6 rounded-2xl shadow-2xl max-w-xl w-full animate-fade-in">
@@ -509,7 +568,6 @@ export default function PresentationMode({
         </div>
       )}
 
-      {/* Answer loading state */}
       {isAnswering && (
         <div className="absolute inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50">
           <div className="bg-gray-900/80 border border-indigo-500/20 p-6 rounded-2xl shadow-2xl max-w-md w-full animate-fade-in text-center">
@@ -522,7 +580,6 @@ export default function PresentationMode({
         </div>
       )}
 
-      {/* Answer display */}
       {answer && !showQAInput && !isAnswering && (
         <div className="absolute bottom-24 left-1/2 transform -translate-x-1/2 bg-black/60 backdrop-blur-lg border border-indigo-500/30 p-4 rounded-xl max-w-lg w-full shadow-2xl animate-fade-in">
           <p className="text-sm text-white">{answer}</p>
