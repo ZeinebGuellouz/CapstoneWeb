@@ -1,8 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { ChevronLeft, ChevronRight, Fullscreen, Play, Pause, MessageCircle, X } from "lucide-react";
 import { Slide } from "../types";
-import Lottie from "lottie-react";
-import robotSpeakingAnimation from "./GCuPF5kg78.json";
 
 interface Props {
   slides: Slide[];
@@ -50,21 +48,7 @@ export default function PresentationMode({
   const defaultAvatar = "/placeholder.svg";
   const currentAvatar = currentSlide?.avatar || defaultAvatar;
 
-  useEffect(() => {
-    let pulseInterval: NodeJS.Timeout;
-    
-    if (isSpeaking && !isPaused) {
-      pulseInterval = setInterval(() => {
-        setAvatarPulse(prev => !prev);
-      }, 500); // Pulse every 500ms while speaking
-    } else {
-      setAvatarPulse(false);
-    }
-    
-    return () => {
-      if (pulseInterval) clearInterval(pulseInterval);
-    };
-  }, [isSpeaking, isPaused]);
+ 
 
   useEffect(() => {
     if (!lottieRef.current) return;
@@ -440,9 +424,9 @@ export default function PresentationMode({
                 loop
                 muted
                 playsInline
-                className={`h-64 w-64 object-cover transition-all duration-500
+                className={`h-60 w-60 object-cover transition-all duration-500
                 ${isPaused ? 'grayscale opacity-80' : 'grayscale-0 opacity-100'}
-                ${avatarPulse ? 'scale-105' : 'scale-100'}`}
+                `}
               />
             </div>
             
