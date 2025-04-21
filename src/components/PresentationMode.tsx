@@ -42,15 +42,14 @@ export default function PresentationMode({
   const [qaHistory, setQaHistory] = useState<{ question: string, answer: string }[]>([]);
   const [voicesReady, setVoicesReady] = useState(false);
   const [avatarPulse, setAvatarPulse] = useState(false); // For avatar speaking animation
+  const videoRef = useRef<HTMLVideoElement | null>(null);
 
   const currentSlide = slides[currentIndex];
   const text = speeches[currentIndex] || currentSlide?.text || "";
   
-  // Default avatar to use if none is provided for a slide
   const defaultAvatar = "/placeholder.svg";
   const currentAvatar = currentSlide?.avatar || defaultAvatar;
 
-  // Function to animate the avatar while speaking
   useEffect(() => {
     let pulseInterval: NodeJS.Timeout;
     
@@ -124,7 +123,6 @@ export default function PresentationMode({
         setAnswer(data.answer);
         setQaHistory((prev) => [...prev, { question, answer: data.answer }]);
   
-        // ✅ Spinner disappears immediately, answer shows up now
         setIsAnswering(false);
   
         speakAnswer(data.answer, () => {
@@ -158,7 +156,6 @@ export default function PresentationMode({
       }
     };
   
-    // Attach listener and load once
     window.speechSynthesis.onvoiceschanged = loadVoices;
     loadVoices();
   }, []);
@@ -331,7 +328,6 @@ export default function PresentationMode({
   
     currentUtteranceRef.current = utterance;
 
-    // Cancel & wait until it's fully cleared
     synthRef.current.cancel();
     await new Promise(resolve => {
       const check = () => {
@@ -343,7 +339,6 @@ export default function PresentationMode({
     
     synthRef.current.speak(utterance);
     
-    // ✅ Manually trigger avatar animation when Enter is pressed
     if (lottieRef.current) {
       console.log("🎬 Manually triggering avatar animation...");
       lottieRef.current.goToAndPlay(0, true);
@@ -356,12 +351,16 @@ export default function PresentationMode({
   const pause = () => {
     synthRef.current.pause();
     setIsPaused(true);
+    videoRef.current?.pause();
   };
+  
 
   const resume = () => {
     synthRef.current.resume();
     setIsPaused(false);
+    videoRef.current?.play();
   };
+  
 
   const goNext = () => {
     synthRef.current.cancel();
@@ -398,16 +397,26 @@ export default function PresentationMode({
     }
   };
 
-  // Calculate progress for progress bar
   const progress = ((currentIndex + 1) / slides.length) * 100;
   
   return (
     <div 
-      className="fixed inset-0 bg-gradient-to-b from-black to-gray-900 text-white flex flex-col items-center justify-center overflow-hidden"
+      className="fixed inset-0 bg-gradient-to-b from-[#1A1F2C] via-[#0F172A] to-black text-white flex flex-col items-center justify-center overflow-hidden"
       onClick={() => setShowControls(true)}
     >
-      {/* Slide content */}
-      <div className="relative w-full h-full flex items-center justify-center">
+      <div className="absolute inset-0 overflow-hidden pointer-events-none z-0">
+        <div className="absolute top-0 left-0 w-full h-full opacity-20">
+          <div className="absolute top-10 left-1/4 w-72 h-72 rounded-full bg-[#1EAEDB] blur-[120px] animate-pulse"></div>
+          <div className="absolute bottom-40 right-1/4 w-80 h-80 rounded-full bg-[#9b87f5] blur-[100px] animate-pulse" 
+               style={{animationDelay: '1s', animationDuration: '4s'}}></div>
+          <div className="absolute top-1/3 right-1/3 w-64 h-64 rounded-full bg-[#7E69AB] blur-[150px] animate-pulse"
+               style={{animationDelay: '2s', animationDuration: '5s'}}></div>
+        </div>
+      </div>
+      
+      <div className="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjAiIGhlaWdodD0iMjAiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PGRlZnM+PHBhdHRlcm4gaWQ9ImdyaWQiIHdpZHRoPSIyMCIgaGVpZ2h0PSIyMCIgcGF0dGVyblVuaXRzPSJ1c2VyU3BhY2VPblVzZSI+PHBhdGggZD0iTSAwIDUgTCAyMCA1IE0gNSAwIEwgNSAyMCIgc3Ryb2tlPSJ3aGl0ZSIgc3Ryb2tlLW9wYWNpdHk9IjAuMDUiLz48L3BhdHRlcm4+PC9kZWZzPjxyZWN0IHdpZHRoPSIxMDAlIiBoZWlnaHQ9IjEwMCUiIGZpbGw9InVybCgjZ3JpZCkiLz48L3N2Zz4=')] opacity-50"></div>
+      
+      <div className="relative w-full h-full flex items-center justify-center z-10">
         {currentSlide && (
           <div className="w-full h-full flex items-center justify-center relative">
             <img
@@ -415,102 +424,110 @@ export default function PresentationMode({
               alt={currentSlide.title}
               className="w-full h-full object-contain m-0 p-0 transition-opacity duration-300 ease-in-out"
             />
-            <div className="absolute inset-0 bg-gradient-to-t from-black/40 to-transparent opacity-60 pointer-events-none"></div>
+            <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-80 pointer-events-none"></div>
           </div>
         )}
       </div>
       
-      {/* Avatar component - positioned in the bottom right corner */}
       {isSpeaking && (
-        <div className={`absolute bottom-32 right-8 transition-all duration-300 ${showControls ? 'opacity-100 translate-y-0' : 'opacity-90 translate-y-4'}`}>
+        <div className={`absolute bottom-28 right-12 transition-all duration-500 ${showControls ? 'opacity-100 translate-y-0' : 'opacity-90 translate-y-4'} z-30`}>
           <div className={`relative ${avatarPulse ? 'scale-105' : 'scale-100'} transition-transform duration-300`}>
-            <div className="absolute -inset-1 bg-gradient-to-r from-blue-500 to-indigo-600 rounded-full opacity-70 blur-md"></div>
-            <Lottie
-              lottieRef={lottieRef} 
-              animationData={robotSpeakingAnimation}
-              loop
-              autoplay={false}
-              style={{ height: 80, width: 80 }}
-              className={`rounded-full border-2 ${isPaused ? 'border-amber-500' : 'border-blue-400'} shadow-lg shadow-blue-500/20`}
-              rendererSettings={{
-                preserveAspectRatio: "xMidYMid slice"
-              }}
-            />
-            {/* Speaking indicator waves */}
+            <div className="relative rounded-full overflow-hidden shadow-lg shadow-[#1EAEDB]/20">
+              <video
+                ref={videoRef}
+                src="/videos/avatar.mp4"
+                autoPlay
+                loop
+                muted
+                playsInline
+                className={`h-64 w-64 object-cover transition-all duration-500
+                ${isPaused ? 'grayscale opacity-80' : 'grayscale-0 opacity-100'}
+                ${avatarPulse ? 'scale-105' : 'scale-100'}`}
+              />
+            </div>
+            
             {isSpeaking && !isPaused && (
-              <div className="absolute -bottom-1 -right-1 flex items-center justify-center">
-                <span className="relative flex h-6 w-6">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
-                  <span className="relative inline-flex rounded-full h-6 w-6 bg-blue-500 items-center justify-center text-white text-xs">
-                    <span className="w-1.5 h-1.5 bg-white rounded-full"></span>
+              <div className="absolute -bottom-2 -right-2 flex items-center justify-center">
+                <span className="relative flex h-8 w-8">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#1EAEDB] opacity-60"></span>
+                  <span className="relative inline-flex rounded-full h-8 w-8 bg-[#1EAEDB] items-center justify-center">
+                    <div className="flex space-x-1">
+                      <div className="w-1 h-3 bg-white rounded-full animate-pulse" style={{animationDelay: '0ms'}}></div>
+                      <div className="w-1 h-4 bg-white rounded-full animate-pulse" style={{animationDelay: '150ms'}}></div>
+                      <div className="w-1 h-2 bg-white rounded-full animate-pulse" style={{animationDelay: '300ms'}}></div>
+                    </div>
                   </span>
                 </span>
               </div>
             )}
             
             {isPaused && (
-              <div className="absolute -bottom-1 -right-1 h-6 w-6 bg-amber-500 rounded-full flex items-center justify-center">
-                <span className="w-2 h-2 bg-white rounded-full"></span>
+              <div className="absolute -bottom-2 -right-2 h-8 w-8 bg-amber-500 rounded-full flex items-center justify-center shadow-lg shadow-amber-500/30">
+                <div className="flex space-x-1.5">
+                  <div className="w-1 h-4 bg-white rounded-sm"></div>
+                  <div className="w-1 h-4 bg-white rounded-sm"></div>
+                </div>
               </div>
             )}
           </div>
         </div>
       )}
       
-      {/* Animated gradient progress bar at the top */}
-      <div className="absolute top-0 left-0 w-full h-1.5 bg-gray-800/30">
+      <div className="absolute top-0 left-0 w-full h-1.5 bg-[#0000001a] z-20">
         <div 
-          className="h-full bg-gradient-to-r from-blue-500 via-indigo-500 to-purple-500 transition-all duration-500 ease-out rounded-r-full"
+          className="h-full bg-gradient-to-r from-[#1EAEDB] via-[#9b87f5] to-[#7E69AB] transition-all duration-500 ease-out"
           style={{ width: `${progress}%` }}
         >
           <div className="absolute right-0 top-0 h-1.5 w-1.5 bg-white rounded-full animate-pulse"></div>
+          <div className="absolute right-0 -bottom-1 h-3 w-[2px] bg-white/50 blur-sm"></div>
         </div>
       </div>
       
-      {/* Controls container that fades in/out */}
-      <div className={`absolute inset-0 pointer-events-none transition-opacity duration-500 ${showControls ? 'opacity-100' : 'opacity-0'}`}>
-        {/* Navigation buttons */}
+      <div className={`absolute inset-0 pointer-events-none transition-opacity duration-500 ${showControls ? 'opacity-100' : 'opacity-0'} z-20`}>
         <button
           onClick={(e) => { e.stopPropagation(); goBack(); }}
-          className="absolute left-6 top-1/2 transform -translate-y-1/2 bg-black/40 hover:bg-black/60 p-5 rounded-full backdrop-blur-lg border border-white/10 pointer-events-auto transition-all duration-300 hover:scale-105 shadow-lg hover:shadow-purple-500/20"
+          className="absolute left-6 top-1/2 transform -translate-y-1/2 bg-black/30 hover:bg-[#1A1F2C]/80 p-5 rounded-full backdrop-blur-xl border border-white/10 pointer-events-auto transition-all duration-300 hover:scale-105 hover:-translate-x-1 shadow-lg hover:shadow-[#9b87f5]/20 group"
           disabled={currentIndex === 0}
         >
-          <ChevronLeft className={`w-7 h-7 text-white ${currentIndex === 0 ? 'opacity-50' : 'opacity-100'}`} />
+          <ChevronLeft className={`w-7 h-7 text-white ${currentIndex === 0 ? 'opacity-50' : 'opacity-100'} group-hover:text-[#1EAEDB]`} />
+          <div className="absolute inset-0 rounded-full border border-[#1EAEDB]/0 group-hover:border-[#1EAEDB]/50 transition-all duration-300"></div>
         </button>
 
         <button
           onClick={(e) => { e.stopPropagation(); goNext(); }}
-          className="absolute right-6 top-1/2 transform -translate-y-1/2 bg-black/40 hover:bg-black/60 p-5 rounded-full backdrop-blur-lg border border-white/10 pointer-events-auto transition-all duration-300 hover:scale-105 shadow-lg hover:shadow-purple-500/20"
+          className="absolute right-6 top-1/2 transform -translate-y-1/2 bg-black/30 hover:bg-[#1A1F2C]/80 p-5 rounded-full backdrop-blur-xl border border-white/10 pointer-events-auto transition-all duration-300 hover:scale-105 hover:translate-x-1 shadow-lg hover:shadow-[#9b87f5]/20 group"
           disabled={currentIndex === slides.length - 1}
         >
-          <ChevronRight className={`w-7 h-7 text-white ${currentIndex === slides.length - 1 ? 'opacity-50' : 'opacity-100'}`} />
+          <ChevronRight className={`w-7 h-7 text-white ${currentIndex === slides.length - 1 ? 'opacity-50' : 'opacity-100'} group-hover:text-[#1EAEDB]`} />
+          <div className="absolute inset-0 rounded-full border border-[#1EAEDB]/0 group-hover:border-[#1EAEDB]/50 transition-all duration-300"></div>
         </button>
         
-        {/* Bottom controls bar */}
-        <div className="absolute bottom-8 left-1/2 transform -translate-x-1/2 bg-black/60 backdrop-blur-lg border border-white/10 px-8 py-4 rounded-2xl flex items-center gap-6 pointer-events-auto shadow-2xl shadow-purple-500/10">
-          {/* Slide counter */}
-          <div className="text-sm font-medium flex items-center gap-1">
-            <span className="text-lg font-semibold">{currentIndex + 1}</span> 
-            <span className="text-gray-400 text-xs">/ {slides.length}</span>
+        <div className="absolute bottom-8 left-1/2 transform -translate-x-1/2 bg-black/40 backdrop-blur-xl border border-[#9b87f5]/20 px-8 py-4 rounded-2xl flex items-center gap-6 pointer-events-auto shadow-2xl shadow-[#1EAEDB]/10 overflow-hidden">
+          <div className="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMzAiIGhlaWdodD0iMzAiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PGRlZnM+PHBhdHRlcm4gaWQ9ImdyaWQiIHdpZHRoPSIzMCIgaGVpZ2h0PSIzMCIgcGF0dGVyblVuaXRzPSJ1c2VyU3BhY2VPblVzZSI+PHBhdGggZD0iTSAwIDcuNSBMIDMwIDcuNSBNIDcuNSAwIEwgNy41IDMwIE0gMTUgMCBMIDE1IDMwIE0gMjIuNSAwIEwgMjIuNSAzMCBNIDAgMTUgTCAzMCAxNSBNIDAgMjIuNSBMIDMwIDIyLjUiIHN0cm9rZT0id2hpdGUiIHN0cm9rZS1vcGFjaXR5PSIwLjAzIi8+PC9wYXR0ZXJuPjwvZGVmcz48cmVjdCB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiBmaWxsPSJ1cmwoI2dyaWQpIi8+PC9zdmc+')] opacity-30"></div>
+          
+          <div className="absolute -inset-1 bg-gradient-to-r from-transparent via-[#1EAEDB]/20 to-transparent skew-x-12 blur-xl opacity-40 animate-shimmer"></div>
+          
+          <div className="relative text-sm font-medium flex items-center gap-1 bg-black/30 px-3 py-1.5 rounded-lg border border-[#1EAEDB]/20">
+            <span className="text-lg font-mono text-[#1EAEDB]">{currentIndex + 1}</span> 
+            <span className="text-gray-400 text-xs font-mono">/ {slides.length}</span>
           </div>
           
-          {/* Divider */}
-          <div className="h-8 w-px bg-white/10"></div>
+          <div className="h-10 w-px bg-gradient-to-b from-[#1EAEDB]/0 via-[#1EAEDB]/30 to-[#1EAEDB]/0"></div>
           
-          {/* Voice controls */}
           <div className="flex items-center gap-4">
             <button 
               onClick={(e) => { e.stopPropagation(); togglePlay(); }}
-              className="p-3 hover:bg-white/10 rounded-full transition-all duration-300 hover:scale-105 relative"
+              className="p-3 hover:bg-[#1EAEDB]/10 rounded-full transition-all duration-300 hover:scale-105 relative group"
             >
               {isSpeaking && !isPaused ? (
-                <Pause className="w-5 h-5 text-blue-400" />
+                <Pause className="w-5 h-5 text-[#1EAEDB] group-hover:text-white" />
               ) : (
-                <Play className="w-5 h-5 text-blue-400" />
+                <Play className="w-5 h-5 text-[#1EAEDB] group-hover:text-white" />
               )}
               {isSpeaking && !isPaused && (
-                <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-blue-500 rounded-full animate-pulse"></span>
+                <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-[#1EAEDB] rounded-full animate-pulse"></span>
               )}
+              <div className="absolute inset-0 border border-[#1EAEDB]/0 group-hover:border-[#1EAEDB]/50 rounded-full transition-all duration-300"></div>
             </button>
             
             <button
@@ -519,121 +536,160 @@ export default function PresentationMode({
                 pause();
                 setShowQAInput(true);
               }}
-              className="flex items-center gap-2 px-4 py-2 rounded-full bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 transition-all duration-300 text-sm font-medium shadow-md hover:shadow-blue-500/20"
+              className="flex items-center gap-2 px-5 py-2 rounded-full bg-gradient-to-r from-[#1EAEDB] to-[#9b87f5] hover:from-[#1EAEDB] hover:to-[#7E69AB] transition-all duration-300 text-sm font-medium shadow-md hover:shadow-[#9b87f5]/30 group relative overflow-hidden"
             >
-              <MessageCircle className="w-4 h-4" />
-              Ask a Question
+              <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-all duration-300"></div>
+              <MessageCircle className="w-4 h-4 relative z-10" />
+              <span className="relative z-10">Ask a Question</span>
             </button>
           </div>
           
-          {/* Divider */}
-          <div className="h-8 w-px bg-white/10"></div>
+          <div className="h-10 w-px bg-gradient-to-b from-[#1EAEDB]/0 via-[#1EAEDB]/30 to-[#1EAEDB]/0"></div>
           
-          {/* Exit fullscreen button */}
           <button 
             onClick={(e) => { e.stopPropagation(); exitFullScreen(); }}
-            className="p-3 hover:bg-white/10 rounded-full transition-all duration-300"
+            className="p-3 hover:bg-[#1EAEDB]/10 rounded-full transition-all duration-300 group"
           >
-            <Fullscreen className="w-5 h-5" />
+            <Fullscreen className="w-5 h-5 text-white/70 group-hover:text-[#1EAEDB]" />
+            <div className="absolute inset-0 border border-[#1EAEDB]/0 group-hover:border-[#1EAEDB]/50 rounded-full transition-all duration-300"></div>
           </button>
         </div>
         
-        {/* Speaking status overlay */}
         {isSpeaking && (
-          <div className="absolute top-8 right-8 bg-black/50 backdrop-blur-lg border border-white/10 px-4 py-2 rounded-full text-sm font-medium flex items-center gap-2 pointer-events-auto shadow-lg">
-            <span className={`w-2.5 h-2.5 rounded-full ${isPaused ? 'bg-amber-500' : 'bg-blue-500 animate-pulse'}`}></span>
-            {isPaused ? "Audio Paused" : "Speaking"}
+          <div className="absolute top-8 right-8 bg-black/30 backdrop-blur-xl border border-[#1EAEDB]/30 px-4 py-2 rounded-full text-sm font-medium flex items-center gap-2 pointer-events-auto shadow-lg group overflow-hidden">
+            <div className="absolute inset-0 bg-gradient-to-r from-[#1EAEDB]/5 to-[#9b87f5]/5"></div>
+            <span className={`w-2.5 h-2.5 rounded-full ${isPaused ? 'bg-amber-500' : 'bg-[#1EAEDB] animate-pulse'} shadow-sm ${isPaused ? 'shadow-amber-500/30' : 'shadow-[#1EAEDB]/30'}`}></span>
+            <span className="relative">
+              {isPaused ? "Audio Paused" : "Speaking"}
+            </span>
           </div>
         )}
       </div>
 
       {showQAInput && (
-        <div className="absolute inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50" onClick={(e) => e.stopPropagation()}>
-          <div className="bg-gray-900/80 border border-indigo-500/20 p-6 rounded-2xl shadow-2xl max-w-xl w-full animate-fade-in">
-            <div className="flex justify-between items-center mb-4">
-              <h3 className="text-lg font-semibold text-white">Ask About This Slide</h3>
-              <button
-                onClick={() => {
-                  setShowQAInput(false);
-                  setAnswer("");
-                  resume();
-                }}
-                className="p-1 hover:bg-white/10 rounded-full transition-all"
-              >
-                <X className="w-5 h-5 text-gray-400" />
-              </button>
-            </div>
+        <div className="absolute inset-0 bg-black/60 backdrop-blur-md flex items-center justify-center z-50 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjAiIGhlaWdodD0iNjAiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PGRlZnM+PHBhdHRlcm4gaWQ9ImdyaWQiIHdpZHRoPSI2MCIgaGVpZ2h0PSI2MCIgcGF0dGVyblVuaXRzPSJ1c2VyU3BhY2VPblVzZSI+PHBhdGggZD0iTSA2MCAwIEwgMCA2MCBNIDAgMCBMIDYwIDYwIE0gMzAgMCBMIDMwIDYwIE0gMCAzMCBMIDYwIDMwIiBzdHJva2U9IndoaXRlIiBzdHJva2Utb3BhY2l0eT0iMC4wMyIvPjwvcGF0dGVybj48L2RlZnM+PHJlY3Qgd2lkdGg9IjEwMCUiIGhlaWdodD0iMTAwJSIgZmlsbD0idXJsKCNncmlkKSIvPjwvc3ZnPg==')] bg-fixed" onClick={(e) => e.stopPropagation()}>
+          <div className="bg-[#1A1F2C]/90 border border-[#9b87f5]/20 p-6 rounded-2xl shadow-2xl max-w-xl w-full animate-fade-in relative overflow-hidden">
+            <div className="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMzAiIGhlaWdodD0iMzAiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PGRlZnM+PHBhdHRlcm4gaWQ9ImdyaWQiIHdpZHRoPSIzMCIgaGVpZ2h0PSIzMCIgcGF0dGVyblVuaXRzPSJ1c2VyU3BhY2VPblVzZSI+PHBhdGggZD0iTSAwIDcuNSBMIDMwIDcuNSBNIDcuNSAwIEwgNy41IDMwIE0gMTUgMCBMIDE1IDMwIE0gMjIuNSAwIEwgMjIuNSAzMCBNIDAgMTUgTCAzMCAxNSBNIDAgMjIuNSBMIDMwIDIyLjUiIHN0cm9rZT0id2hpdGUiIHN0cm9rZS1vcGFjaXR5PSIwLjAzIi8+PC9wYXR0ZXJuPjwvZGVmcz48cmVjdCB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiBmaWxsPSJ1cmwoI2dyaWQpIi8+PC9zdmc+')] opacity-40"></div>
             
-            <input
-              type="text"
-              value={question}
-              onChange={(e) => setQuestion(e.target.value)}
-              placeholder="Type your question..."
-              className="w-full px-4 py-3 rounded-xl bg-black/40 text-white border border-indigo-500/30 focus:border-indigo-500/50 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 transition-all mb-4"
-              autoFocus
-            />
-            
-            <div className="flex gap-3 justify-end">
-              <button
-                onClick={() => {
-                  setShowQAInput(false);
-                  setAnswer("");
-                  resume();
-                }}
-                className="px-4 py-2 rounded-xl border border-gray-700 hover:bg-gray-800 transition-all text-sm font-medium"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={() => {
-                  setShowQAInput(false);
-                  setAnswer("");
-                  setIsAnswering(true);
-                  handleAskQuestion();
-                }}
-                className="px-5 py-2 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 transition-all text-sm font-medium shadow-md"
-              >
-                Ask
-              </button>
-            </div>
-            
-            {qaHistory.length > 0 && (
-              <div className="mt-6">
-                <h4 className="text-sm font-semibold text-gray-300 mb-2">Previous Q&A</h4>
-                <div className="mt-2 text-white bg-black/40 px-4 py-3 rounded-xl text-sm max-h-48 overflow-y-auto space-y-3 border border-white/5">
-                  {qaHistory.map((qa, idx) => (
-                    <div key={idx} className="pb-3 border-b border-white/5 last:border-0">
-                      <p className="font-medium text-indigo-300">Q: {qa.question}</p>
-                      <p className="mt-1 text-gray-300">A: {qa.answer}</p>
-                    </div>
-                  ))}
-                </div>
+            <div className="absolute inset-0 bg-gradient-to-br from-[#1EAEDB]/20 to-[#9b87f5]/20 blur-xl opacity-50"></div>
+            <div className="relative z-10">
+              <div className="flex justify-between items-center mb-4">
+                <h3 className="text-lg font-semibold text-white flex items-center gap-2">
+                  <div className="w-1.5 h-6 bg-gradient-to-b from-[#1EAEDB] to-[#9b87f5] rounded-full mr-1"></div>
+                  Ask About This Slide
+                </h3>
+                <button
+                  onClick={() => {
+                    setShowQAInput(false);
+                    setAnswer("");
+                    resume();
+                  }}
+                  className="p-1 hover:bg-white/10 rounded-full transition-all group"
+                >
+                  <X className="w-5 h-5 text-gray-400 group-hover:text-white" />
+                </button>
               </div>
-            )}
+              
+              <input
+                type="text"
+                value={question}
+                onChange={(e) => setQuestion(e.target.value)}
+                placeholder="Type your question..."
+                className="w-full px-4 py-3 rounded-xl bg-black/50 text-white border border-[#9b87f5]/30 focus:border-[#1EAEDB]/50 focus:outline-none focus:ring-2 focus:ring-[#1EAEDB]/20 transition-all mb-4"
+                autoFocus
+              />
+              
+              <div className="flex gap-3 justify-end">
+                <button
+                  onClick={() => {
+                    setShowQAInput(false);
+                    setAnswer("");
+                    resume();
+                  }}
+                  className="px-5 py-2.5 rounded-xl border border-[#9b87f5]/30 hover:border-[#9b87f5]/50 hover:bg-[#9b87f5]/10 transition-all text-sm font-medium group"
+                >
+                  <span className="group-hover:text-[#9b87f5] transition-all">Cancel</span>
+                </button>
+                <button
+                  onClick={() => {
+                    setShowQAInput(false);
+                    setAnswer("");
+                    setIsAnswering(true);
+                    handleAskQuestion();
+                  }}
+                  className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-[#1EAEDB] to-[#9b87f5] hover:from-[#1EAEDB] hover:to-[#7E69AB] transition-all text-sm font-medium shadow-lg hover:shadow-[#1EAEDB]/30 relative overflow-hidden group"
+                >
+                  <span className="absolute inset-0 w-full h-full bg-white/0 group-hover:bg-white/10 transition-all"></span>
+                  <span className="relative">Ask</span>
+                </button>
+              </div>
+              
+              {qaHistory.length > 0 && (
+                <div className="mt-6">
+                  <h4 className="text-sm font-semibold text-gray-300 mb-2 flex items-center">
+                    <div className="w-1 h-4 bg-gradient-to-b from-[#1EAEDB] to-[#9b87f5] rounded-full mr-2"></div>
+                    Previous Q&A
+                  </h4>
+                  <div className="mt-2 text-white bg-black/50 px-4 py-3 rounded-xl text-sm max-h-48 overflow-y-auto space-y-3 border border-[#9b87f5]/20 shadow-inner">
+                    {qaHistory.map((qa, idx) => (
+                      <div key={idx} className="pb-3 border-b border-[#9b87f5]/10 last:border-0">
+                        <p className="font-medium text-[#9b87f5]">Q: {qa.question}</p>
+                        <p className="mt-1 text-gray-300">A: {qa.answer}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
         </div>
       )}
 
       {isAnswering && (
-        <div className="absolute inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50">
-          <div className="bg-gray-900/80 border border-indigo-500/20 p-6 rounded-2xl shadow-2xl max-w-md w-full animate-fade-in text-center">
-            <div className="flex flex-col items-center justify-center gap-4">
-              <div className="w-10 h-10 border-t-2 border-r-2 border-indigo-500 rounded-full animate-spin"></div>
-              <p className="text-lg font-medium text-white">Thinking about your question...</p>
-              <p className="text-sm text-gray-400">Analyzing slide content for a relevant answer</p>
+        <div className="absolute inset-0 bg-black/70 backdrop-blur-md flex items-center justify-center z-50 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjAiIGhlaWdodD0iNjAiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PGRlZnM+PHBhdHRlcm4gaWQ9ImdyaWQiIHdpZHRoPSI2MCIgaGVpZ2h0PSI2MCIgcGF0dGVyblVuaXRzPSJ1c2VyU3BhY2VPblVzZSI+PHBhdGggZD0iTSA2MCAwIEwgMCA2MCBNIDAgMCBMIDYwIDYwIE0gMzAgMCBMIDMwIDYwIE0gMCAzMCBMIDYwIDMwIiBzdHJva2U9IndoaXRlIiBzdHJva2Utb3BhY2l0eT0iMC4wMyIvPjwvcGF0dGVybj48L2RlZnM+PHJlY3Qgd2lkdGg9IjEwMCUiIGhlaWdodD0iMTAwJSIgZmlsbD0idXJsKCNncmlkKSIvPjwvc3ZnPg==')] bg-fixed">
+          <div className="bg-[#1A1F2C]/80 border border-[#9b87f5]/20 p-8 rounded-2xl shadow-2xl max-w-md w-full animate-fade-in text-center relative overflow-hidden">
+            <div className="absolute inset-0 bg-gradient-to-br from-[#1EAEDB]/10 to-[#9b87f5]/10 blur-xl opacity-50"></div>
+            <div className="relative z-10 flex flex-col items-center justify-center gap-6">
+              <div className="relative h-16 w-16">
+                <div className="absolute inset-0 border-2 border-[#9b87f5]/20 rounded-full"></div>
+                <div className="absolute inset-0 border-t-2 border-r-2 border-[#1EAEDB] rounded-full animate-spin"></div>
+                <div className="absolute inset-3 border border-[#9b87f5]/40 rounded-full"></div>
+                <div className="absolute inset-0 flex items-center justify-center">
+                  <div className="h-2 w-2 bg-[#1EAEDB] rounded-full animate-pulse"></div>
+                </div>
+                <div className="absolute inset-0 border border-[#1EAEDB]/20 rounded-full animate-ping" style={{animationDuration: "1.5s"}}></div>
+              </div>
+              
+              <div>
+                <p className="text-lg font-medium text-white">Analyzing content...</p>
+                <p className="text-sm text-[#1EAEDB] mt-1">Finding the most relevant information</p>
+              </div>
+              
+              <div className="w-full h-1 bg-black/40 rounded-full overflow-hidden">
+                <div className="h-full w-1/3 bg-gradient-to-r from-[#1EAEDB] to-[#9b87f5] animate-progress"></div>
+              </div>
             </div>
           </div>
         </div>
       )}
 
       {answer && !showQAInput && !isAnswering && (
-        <div className="absolute bottom-24 left-1/2 transform -translate-x-1/2 bg-black/60 backdrop-blur-lg border border-indigo-500/30 p-4 rounded-xl max-w-lg w-full shadow-2xl animate-fade-in">
-          <p className="text-sm text-white">{answer}</p>
+        <div className="absolute bottom-28 left-1/2 transform -translate-x-1/2 bg-black/40 backdrop-blur-lg border border-[#9b87f5]/30 p-5 rounded-xl max-w-xl w-full shadow-2xl animate-fade-in relative overflow-hidden">
+          <div className="absolute inset-0 bg-gradient-to-r from-[#1EAEDB]/10 via-transparent to-[#9b87f5]/10 animate-shimmer"></div>
+          
+          <div className="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjAiIGhlaWdodD0iMjAiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PGRlZnM+PHBhdHRlcm4gaWQ9ImdyaWQiIHdpZHRoPSIyMCIgaGVpZ2h0PSIyMCIgcGF0dGVyblVuaXRzPSJ1c2VyU3BhY2VPblVzZSI+PHBhdGggZD0iTSAwIDUgTCAyMCA1IE0gNSAwIEwgNSAyMCIgc3Ryb2tlPSJ3aGl0ZSIgc3Ryb2tlLW9wYWNpdHk9IjAuMDMiLz48L3BhdHRlcm4+PC9kZWZzPjxyZWN0IHdpZHRoPSIxMDAlIiBoZWlnaHQ9IjEwMCUiIGZpbGw9InVybCgjZ3JpZCkiLz48L3N2Zz4=')] opacity-30"></div>
+          
+          <div className="absolute left-0 top-0 bottom-0 w-1 bg-gradient-to-b from-[#1EAEDB] to-[#9b87f5]"></div>
+          
+          <div className="relative z-10">
+            <p className="text-white">{answer}</p>
+          </div>
+          
           <button
             onClick={() => setAnswer("")}
-            className="absolute top-2 right-2 p-1 hover:bg-white/10 rounded-full transition-all"
+            className="absolute top-2 right-2 p-1 hover:bg-white/10 rounded-full transition-all group"
           >
-            <X className="w-4 h-4 text-gray-400" />
+            <X className="w-4 h-4 text-gray-400 group-hover:text-white" />
           </button>
         </div>
       )}
