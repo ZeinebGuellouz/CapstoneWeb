@@ -239,20 +239,17 @@ export default function PresentationMode({
     }
   }, [voicesReady]);
   
-  const playCurrentSlide = (overrideVoices?: SpeechSynthesisVoice[]) => {
+  const playCurrentSlide = async (overrideVoices?: SpeechSynthesisVoice[]) => {
     if (!text.trim()) {
       console.warn("⚠️ Slide text is empty. Skipping...");
       return;
     }
   
     const loadedVoices = window.speechSynthesis.getVoices();
-  
-    // 🔁 Voice readiness handling (retry only once if not yet ready)
     if (!voicesReady || loadedVoices.length === 0) {
       console.warn("🕐 Voices not ready. Aborting playback.");
       return;
     }
-    
   
     const availableVoices = overrideVoices?.length
       ? overrideVoices
@@ -261,7 +258,7 @@ export default function PresentationMode({
       : loadedVoices;
   
     if (voices.length === 0 && availableVoices.length > 0) {
-      setVoices(availableVoices); // Patch global voices state
+      setVoices(availableVoices);
     }
   
     const paddedText = "\u00A0" + text;
@@ -273,8 +270,6 @@ export default function PresentationMode({
     if (matchedVoice) {
       utterance.voice = matchedVoice;
       console.log("🎙 Using voice:", matchedVoice.name);
-    } else {
-      console.warn("⚠️ No matched voice. Using default.");
     }
   
     utterance.onstart = () => {
@@ -301,11 +296,20 @@ export default function PresentationMode({
     };
   
     currentUtteranceRef.current = utterance;
-    synthRef.current.cancel();
   
-    // 🧼 Removed dummy utterance
+    // Cancel & wait until it's fully cleared
+    synthRef.current.cancel();
+    await new Promise(resolve => {
+      const check = () => {
+        if (!synthRef.current.speaking) resolve(null);
+        else setTimeout(check, 50);
+      };
+      check();
+    });
+  
     synthRef.current.speak(utterance);
   };
+  
   
   const pause = () => {
     synthRef.current.pause();
