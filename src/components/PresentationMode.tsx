@@ -29,7 +29,7 @@ export default function PresentationMode({
   const synthRef = useRef(window.speechSynthesis);
   const currentUtteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
   const shouldAutoPlayRef = useRef(false);
-
+  const lottieRef = useRef<any>(null);
   const [isPaused, setIsPaused] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [isPlayAll, setIsPlayAll] = useState(false);
@@ -66,6 +66,19 @@ export default function PresentationMode({
       if (pulseInterval) clearInterval(pulseInterval);
     };
   }, [isSpeaking, isPaused]);
+
+  useEffect(() => {
+    if (!lottieRef.current) return;
+  
+    if (isSpeaking && !isPaused) {
+      console.log("▶️ Playing Lottie animation");
+      lottieRef.current.play();
+    } else {
+      console.log("⏸ Stopping Lottie animation");
+      lottieRef.current.stop(); // or .pause() if smoother
+    }
+  }, [isSpeaking, isPaused]);
+  
 
   const speakAnswer = (answer: string, callback?: () => void) => {
     const utterance = new SpeechSynthesisUtterance(answer);
@@ -182,20 +195,23 @@ export default function PresentationMode({
           exitFullScreen();
           break;
         case "Enter": {
-            const availableVoices = voices.length > 0 ? voices : window.speechSynthesis.getVoices();
-            if (availableVoices.length > 0) {
-              if (voices.length === 0) {
-                setVoices(availableVoices); // Patch state if not yet updated
-              }
-              console.log("🔑 Enter pressed - Starting playback");
-              shouldAutoPlayRef.current = true;
-              setIsPlayAll(true);
-                playCurrentSlide(); // Removed the argument as playCurrentSlide does not accept parameters
-            } else {
-              console.warn("🕐 Voices not loaded yet. Aborting.");
+          const availableVoices = voices.length > 0 ? voices : window.speechSynthesis.getVoices();
+          if (availableVoices.length > 0) {
+            if (voices.length === 0) {
+              setVoices(availableVoices); // Patch state if not yet updated
             }
-            break;
+
+            console.log("🔑 Enter pressed - Starting playback");
+            shouldAutoPlayRef.current = true;
+            setIsPlayAll(true);
+            setIsSpeaking(true); // ✅ Start avatar animation immediately
+            setIsPaused(false);  // ✅ Ensure paused state is false
+            playCurrentSlide();  // 🔈 Start reading the slide aloud
+          } else {
+            console.warn("🕐 Voices not loaded yet. Aborting.");
           }
+          break;
+        }
           
           
           
@@ -239,6 +255,21 @@ export default function PresentationMode({
     }
   }, [voicesReady]);
   
+  useEffect(() => {
+    if (isSpeaking && !isPaused && lottieRef.current) {
+      console.log("🔄 Slide changed during speech. Restarting animation.");
+      lottieRef.current.goToAndPlay(0, true);
+    }
+  }, [currentIndex]);
+  useEffect(() => {
+    if (isSpeaking && !isPaused && lottieRef.current) {
+      console.log("🔥 Ensuring avatar animation plays on slide", currentIndex);
+      lottieRef.current.goToAndPlay(0, true);
+    }
+  }, [isSpeaking, isPaused, currentIndex]);
+  
+  
+  
   const playCurrentSlide = async (overrideVoices?: SpeechSynthesisVoice[]) => {
     if (!text.trim()) {
       console.warn("⚠️ Slide text is empty. Skipping...");
@@ -271,12 +302,15 @@ export default function PresentationMode({
       utterance.voice = matchedVoice;
       console.log("🎙 Using voice:", matchedVoice.name);
     }
-  
+    
     utterance.onstart = () => {
       console.log("🔊 Speech started");
       setIsSpeaking(true);
       setIsPaused(false);
+    
     };
+    
+
   
     utterance.onend = () => {
       console.log("✅ Speech ended");
@@ -296,7 +330,7 @@ export default function PresentationMode({
     };
   
     currentUtteranceRef.current = utterance;
-  
+
     // Cancel & wait until it's fully cleared
     synthRef.current.cancel();
     await new Promise(resolve => {
@@ -306,8 +340,16 @@ export default function PresentationMode({
       };
       check();
     });
-  
+    
     synthRef.current.speak(utterance);
+    
+    // ✅ Manually trigger avatar animation when Enter is pressed
+    if (lottieRef.current) {
+      console.log("🎬 Manually triggering avatar animation...");
+      lottieRef.current.goToAndPlay(0, true);
+      lottieRef.current.play();
+    }
+    
   };
   
   
@@ -384,16 +426,16 @@ export default function PresentationMode({
           <div className={`relative ${avatarPulse ? 'scale-105' : 'scale-100'} transition-transform duration-300`}>
             <div className="absolute -inset-1 bg-gradient-to-r from-blue-500 to-indigo-600 rounded-full opacity-70 blur-md"></div>
             <Lottie
+              lottieRef={lottieRef} 
               animationData={robotSpeakingAnimation}
               loop
-              autoplay={isSpeaking && !isPaused}
+              autoplay={false}
               style={{ height: 80, width: 80 }}
               className={`rounded-full border-2 ${isPaused ? 'border-amber-500' : 'border-blue-400'} shadow-lg shadow-blue-500/20`}
               rendererSettings={{
                 preserveAspectRatio: "xMidYMid slice"
               }}
             />
-            
             {/* Speaking indicator waves */}
             {isSpeaking && !isPaused && (
               <div className="absolute -bottom-1 -right-1 flex items-center justify-center">
