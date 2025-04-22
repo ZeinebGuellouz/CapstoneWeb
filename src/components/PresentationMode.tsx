@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { ChevronLeft, ChevronRight, Fullscreen, Play, Pause, MessageCircle, X } from "lucide-react";
+import { ChevronLeft, ChevronRight, Fullscreen, Play, Pause, MessageCircle, X, Mic, MicOff } from "lucide-react";
 import { Slide } from "../types";
 
 interface Props {
@@ -41,12 +41,60 @@ export default function PresentationMode({
   const [voicesReady, setVoicesReady] = useState(false);
   const [avatarPulse] = useState(false); // For avatar speaking animation
   const videoRef = useRef<HTMLVideoElement | null>(null);
+  // @ts-ignore
+   const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+   const recognition = useRef<any>(null);
+   const [isListening, setIsListening] = useState(false);
+
 
   const currentSlide = slides[currentIndex];
   const text = speeches[currentIndex] || currentSlide?.text || "";
   
 
- 
+  useEffect(() => {
+    if (!SpeechRecognition) {
+      console.warn("🧠 SpeechRecognition not supported on this browser.");
+      return;
+    }
+
+    const recog = new SpeechRecognition();
+    recog.lang = "en-US";
+    recog.continuous = true;
+    recog.interimResults = true;
+
+    recog.onresult = (event: any) => {
+      let finalTranscript = "";
+      for (let i = event.resultIndex; i < event.results.length; ++i) {
+        const transcript = event.results[i][0].transcript;
+        if (event.results[i].isFinal) {
+          finalTranscript += transcript;
+        } else {
+          setQuestion(transcript);
+        }
+      }
+      if (finalTranscript) {
+        setQuestion(finalTranscript);
+      }
+    };
+
+    recog.onerror = (event: any) => {
+      console.error("❌ Speech recognition error:", event.error);
+      setIsAnswering(false);
+      setIsListening(false);
+    };
+
+    recognition.current = recog;
+  }, []);
+
+ const toggleMic = () => {
+    if (!isListening) {
+      recognition.current?.start();
+      setIsListening(true);
+    } else {
+      recognition.current?.stop();
+      setIsListening(false);
+    }
+  };
 
   useEffect(() => {
     if (!lottieRef.current) return;
@@ -76,18 +124,14 @@ export default function PresentationMode({
     synthRef.current.speak(utterance);
   };
   
-  const handleAskQuestion = async () => {
-    if (!question.trim()) return;
+  const handleAskQuestion = async (overrideQuestion?: string) => {
+    const userQuestion = overrideQuestion || question;
+    if (!userQuestion.trim()) return;
   
-    pause(); // Pause slide speech
+    pause(); // pause speech
     setIsAnswering(true);
   
-    const fullPresentationText = slides
-      .map((s) => speeches[s.slideNumber] || s.text || "")
-      .join("\n");
-  
-    console.log("🤖 Sending question to backend:", question);
-    console.log("📄 Full presentation context being analyzed:", fullPresentationText);
+    const fullPresentationText = slides.map((s) => speeches[s.slideNumber] || s.text || "").join("\n");
   
     try {
       const res = await fetch("http://localhost:8000/ask", {
@@ -95,32 +139,26 @@ export default function PresentationMode({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           slide_text: fullPresentationText,
-          question: question
-        })
+          question: userQuestion
+        }),
       });
   
       const data = await res.json();
+  
       if (data.answer) {
-        console.log("🧠 AI Answer:", data.answer);
         setAnswer(data.answer);
-        setQaHistory((prev) => [...prev, { question, answer: data.answer }]);
-  
-        setIsAnswering(false);
-  
-        speakAnswer(data.answer, () => {
-          resume(); // Resume slide speech after AI finishes speaking
-        });
+        setQaHistory((prev) => [...prev, { question: userQuestion, answer: data.answer }]);
+        speakAnswer(data.answer, () => resume());
       } else {
-        console.warn("⚠️ No answer received from backend.");
-        setIsAnswering(false);
         resume();
       }
+  
     } catch (err) {
       console.error("❌ Failed to get answer:", err);
-      setIsAnswering(false);
       resume();
     }
-  
+    setIsListening(false);   
+    setIsAnswering(false);
     setShowQAInput(false);
     setQuestion("");
   };
@@ -467,13 +505,27 @@ export default function PresentationMode({
       
       <div className={`absolute inset-0 pointer-events-none transition-opacity duration-500 ${showControls ? 'opacity-100' : 'opacity-0'} z-20`}>
         <button
-          onClick={(e) => { e.stopPropagation(); goBack(); }}
-          className="absolute left-6 top-1/2 transform -translate-y-1/2 bg-black/30 hover:bg-[#1A1F2C]/80 p-5 rounded-full backdrop-blur-xl border border-white/10 pointer-events-auto transition-all duration-300 hover:scale-105 hover:-translate-x-1 shadow-lg hover:shadow-[#9b87f5]/20 group"
-          disabled={currentIndex === 0}
+          onClick={(e) => {
+            e.stopPropagation();
+            if (!isListening) {
+              recognition.current?.start();
+              setIsListening(true);
+              pause(); // optional
+            } else {
+              recognition.current?.stop();
+              setIsListening(false);
+            }
+          }}
+          className={`p-3 rounded-full transition-all duration-300 hover:scale-105 relative group ${isListening ? 'bg-red-600/30' : 'bg-[#1EAEDB]/10'}`}
         >
-          <ChevronLeft className={`w-7 h-7 text-white ${currentIndex === 0 ? 'opacity-50' : 'opacity-100'} group-hover:text-[#1EAEDB]`} />
-          <div className="absolute inset-0 rounded-full border border-[#1EAEDB]/0 group-hover:border-[#1EAEDB]/50 transition-all duration-300"></div>
+          {isListening ? (
+            <MicOff className="w-5 h-5 text-red-400 group-hover:text-white" />
+          ) : (
+            <Mic className="w-5 h-5 text-[#1EAEDB] group-hover:text-white" />
+          )}
+          <div className="absolute inset-0 border border-transparent group-hover:border-white/30 rounded-full transition-all duration-300"></div>
         </button>
+        
 
         <button
           onClick={(e) => { e.stopPropagation(); goNext(); }}
@@ -548,84 +600,87 @@ export default function PresentationMode({
         )}
       </div>
 
-      {showQAInput && (
-        <div className="absolute inset-0 bg-black/60 backdrop-blur-md flex items-center justify-center z-50 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjAiIGhlaWdodD0iNjAiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PGRlZnM+PHBhdHRlcm4gaWQ9ImdyaWQiIHdpZHRoPSI2MCIgaGVpZ2h0PSI2MCIgcGF0dGVyblVuaXRzPSJ1c2VyU3BhY2VPblVzZSI+PHBhdGggZD0iTSA2MCAwIEwgMCA2MCBNIDAgMCBMIDYwIDYwIE0gMzAgMCBMIDMwIDYwIE0gMCAzMCBMIDYwIDMwIiBzdHJva2U9IndoaXRlIiBzdHJva2Utb3BhY2l0eT0iMC4wMyIvPjwvcGF0dGVybj48L2RlZnM+PHJlY3Qgd2lkdGg9IjEwMCUiIGhlaWdodD0iMTAwJSIgZmlsbD0idXJsKCNncmlkKSIvPjwvc3ZnPg==')] bg-fixed" onClick={(e) => e.stopPropagation()}>
-          <div className="bg-[#1A1F2C]/90 border border-[#9b87f5]/20 p-6 rounded-2xl shadow-2xl max-w-xl w-full animate-fade-in relative overflow-hidden">
-            <div className="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMzAiIGhlaWdodD0iMzAiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PGRlZnM+PHBhdHRlcm4gaWQ9ImdyaWQiIHdpZHRoPSIzMCIgaGVpZ2h0PSIzMCIgcGF0dGVyblVuaXRzPSJ1c2VyU3BhY2VPblVzZSI+PHBhdGggZD0iTSAwIDcuNSBMIDMwIDcuNSBNIDcuNSAwIEwgNy41IDMwIE0gMTUgMCBMIDE1IDMwIE0gMjIuNSAwIEwgMjIuNSAzMCBNIDAgMTUgTCAzMCAxNSBNIDAgMjIuNSBMIDMwIDIyLjUiIHN0cm9rZT0id2hpdGUiIHN0cm9rZS1vcGFjaXR5PSIwLjAzIi8+PC9wYXR0ZXJuPjwvZGVmcz48cmVjdCB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiBmaWxsPSJ1cmwoI2dyaWQpIi8+PC9zdmc+')] opacity-40"></div>
-            
-            <div className="absolute inset-0 bg-gradient-to-br from-[#1EAEDB]/20 to-[#9b87f5]/20 blur-xl opacity-50"></div>
-            <div className="relative z-10">
-              <div className="flex justify-between items-center mb-4">
-                <h3 className="text-lg font-semibold text-white flex items-center gap-2">
-                  <div className="w-1.5 h-6 bg-gradient-to-b from-[#1EAEDB] to-[#9b87f5] rounded-full mr-1"></div>
-                  Ask About This Slide
-                </h3>
-                <button
-                  onClick={() => {
-                    setShowQAInput(false);
-                    setAnswer("");
-                    resume();
-                  }}
-                  className="p-1 hover:bg-white/10 rounded-full transition-all group"
-                >
-                  <X className="w-5 h-5 text-gray-400 group-hover:text-white" />
-                </button>
-              </div>
-              
-              <input
-                type="text"
-                value={question}
-                onChange={(e) => setQuestion(e.target.value)}
-                placeholder="Type your question..."
-                className="w-full px-4 py-3 rounded-xl bg-black/50 text-white border border-[#9b87f5]/30 focus:border-[#1EAEDB]/50 focus:outline-none focus:ring-2 focus:ring-[#1EAEDB]/20 transition-all mb-4"
-                autoFocus
-              />
-              
-              <div className="flex gap-3 justify-end">
-                <button
-                  onClick={() => {
-                    setShowQAInput(false);
-                    setAnswer("");
-                    resume();
-                  }}
-                  className="px-5 py-2.5 rounded-xl border border-[#9b87f5]/30 hover:border-[#9b87f5]/50 hover:bg-[#9b87f5]/10 transition-all text-sm font-medium group"
-                >
-                  <span className="group-hover:text-[#9b87f5] transition-all">Cancel</span>
-                </button>
-                <button
-                  onClick={() => {
-                    setShowQAInput(false);
-                    setAnswer("");
-                    setIsAnswering(true);
-                    handleAskQuestion();
-                  }}
-                  className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-[#1EAEDB] to-[#9b87f5] hover:from-[#1EAEDB] hover:to-[#7E69AB] transition-all text-sm font-medium shadow-lg hover:shadow-[#1EAEDB]/30 relative overflow-hidden group"
-                >
-                  <span className="absolute inset-0 w-full h-full bg-white/0 group-hover:bg-white/10 transition-all"></span>
-                  <span className="relative">Ask</span>
-                </button>
-              </div>
-              
-              {qaHistory.length > 0 && (
-                <div className="mt-6">
-                  <h4 className="text-sm font-semibold text-gray-300 mb-2 flex items-center">
-                    <div className="w-1 h-4 bg-gradient-to-b from-[#1EAEDB] to-[#9b87f5] rounded-full mr-2"></div>
-                    Previous Q&A
-                  </h4>
-                  <div className="mt-2 text-white bg-black/50 px-4 py-3 rounded-xl text-sm max-h-48 overflow-y-auto space-y-3 border border-[#9b87f5]/20 shadow-inner">
-                    {qaHistory.map((qa, idx) => (
-                      <div key={idx} className="pb-3 border-b border-[#9b87f5]/10 last:border-0">
-                        <p className="font-medium text-[#9b87f5]">Q: {qa.question}</p>
-                        <p className="mt-1 text-gray-300">A: {qa.answer}</p>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
+     {showQAInput && (
+  <div className="absolute inset-0 bg-black/60 backdrop-blur-md flex items-center justify-center z-50">
+    <div className="bg-[#1A1F2C]/90 border border-[#9b87f5]/20 p-6 rounded-2xl shadow-2xl max-w-xl w-full animate-fade-in relative overflow-hidden">
+      <div className="relative z-10">
+        <div className="flex justify-between items-center mb-4">
+          <h3 className="text-lg font-semibold text-white flex items-center gap-2">
+            <div className="w-1.5 h-6 bg-gradient-to-b from-[#1EAEDB] to-[#9b87f5] rounded-full mr-1"></div>
+            Ask About This Slide
+          </h3>
+          <button
+            onClick={() => {
+              setShowQAInput(false);
+              setAnswer("");
+              resume();
+            }}
+            className="p-1 hover:bg-white/10 rounded-full transition-all group"
+          >
+            <X className="w-5 h-5 text-gray-400 group-hover:text-white" />
+          </button>
         </div>
-      )}
+
+        <input
+          type="text"
+          value={question}
+          onChange={(e) => setQuestion(e.target.value)}
+          placeholder="Type your question..."
+          className="w-full px-4 py-3 rounded-xl bg-black/50 text-white border border-[#9b87f5]/30 focus:border-[#1EAEDB]/50 focus:outline-none focus:ring-2 focus:ring-[#1EAEDB]/20 transition-all mb-4"
+          autoFocus
+        />
+
+        <div className="flex gap-3 justify-end items-center">
+          <button
+            onClick={() => {
+              recognition.current?.stop();
+              setShowQAInput(false);
+              setAnswer("");
+              resume();
+            }}
+            className="px-5 py-2.5 rounded-xl border border-[#9b87f5]/30 hover:border-[#9b87f5]/50 hover:bg-[#9b87f5]/10 transition-all text-sm font-medium group"
+          >
+            <span className="group-hover:text-[#9b87f5] transition-all">Cancel</span>
+          </button>
+
+          {/* 🎤 Mic Button */}
+          <button
+            onClick={() => {
+              if (!isListening) {
+                recognition.current?.start();
+                setIsListening(true);
+              } else {
+                recognition.current?.stop();
+                setIsListening(false);
+              }
+            }}
+            className={`p-2 rounded-full transition-all duration-300 hover:scale-105 relative group border ${isListening ? 'bg-red-500/30 border-red-400' : 'bg-[#1EAEDB]/10 border-[#1EAEDB]/20'}`}
+            title="Use voice"
+          >
+            {isListening ? (
+              <MicOff className="w-4 h-4 text-red-300 group-hover:text-white" />
+            ) : (
+              <Mic className="w-4 h-4 text-[#1EAEDB] group-hover:text-white" />
+            )}
+          </button>
+
+          <button
+            onClick={() => {
+              setShowQAInput(false);
+              setAnswer("");
+              setIsAnswering(true);
+              handleAskQuestion();
+            }}
+            className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-[#1EAEDB] to-[#9b87f5] hover:from-[#1EAEDB] hover:to-[#7E69AB] transition-all text-sm font-medium shadow-lg hover:shadow-[#1EAEDB]/30 relative overflow-hidden group"
+          >
+            <span className="absolute inset-0 w-full h-full bg-white/0 group-hover:bg-white/10 transition-all"></span>
+            <span className="relative">Ask</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+)}
 
       {isAnswering && (
         <div className="absolute inset-0 bg-black/70 backdrop-blur-md flex items-center justify-center z-50 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjAiIGhlaWdodD0iNjAiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PGRlZnM+PHBhdHRlcm4gaWQ9ImdyaWQiIHdpZHRoPSI2MCIgaGVpZ2h0PSI2MCIgcGF0dGVyblVuaXRzPSJ1c2VyU3BhY2VPblVzZSI+PHBhdGggZD0iTSA2MCAwIEwgMCA2MCBNIDAgMCBMIDYwIDYwIE0gMzAgMCBMIDMwIDYwIE0gMCAzMCBMIDYwIDMwIiBzdHJva2U9IndoaXRlIiBzdHJva2Utb3BhY2l0eT0iMC4wMyIvPjwvcGF0dGVybj48L2RlZnM+PHJlY3Qgd2lkdGg9IjEwMCUiIGhlaWdodD0iMTAwJSIgZmlsbD0idXJsKCNncmlkKSIvPjwvc3ZnPg==')] bg-fixed">
