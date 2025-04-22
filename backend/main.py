@@ -17,6 +17,8 @@ import requests
 import firebase_admin
 from firebase_admin import credentials, auth, firestore
 from fastapi import Header , Query
+from langdetect import detect
+
 
 
 
@@ -180,21 +182,39 @@ async def generate_speech(request: Request):
         previous_slides = body.get("previous_slides", [])
         current_slide = body.get("current_slide", {})
         slide_index = body.get("slide_index", 0)
-        voice_tone = body.get("voice_tone", "Formal")  # Default to "Formal" if not provided
+        voice_tone = body.get("voice_tone", "Formal")
 
-        if not current_slide:
-            return {"error": "No current slide provided"}
+        if not current_slide or not current_slide.get("text"):
+            return {"error": "No current slide text provided"}
 
-        first_slide_text = previous_slides[0]["text"] if previous_slides else current_slide["text"]
-        language = "French" if any(word in first_slide_text.lower() for word in ["le", "la", "les", "un", "une", "est", "avec"]) else "English"
+        current_text = current_slide.get("text", "")
+        try:
+             language_code = detect(current_text)
+             language = "French" if language_code == "fr" else "English"
+        except:
+             language = "English" 
 
-        prompt = (
-            f"You are an AI assistant helping narrate a slide in a {language} presentation. "
-            f"Focus only on the current slide, without repeating previous content or introducing generic phrases. "
-            f"Keep it {voice_tone.lower()}, clear, and between 3 to 5 concise sentences. "
-            f"Do not start with greetings like 'Ladies and gentlemen.' Avoid phrases like 'Welcome to the presentation.'\n\n"
+        intro_line = (
+            "Start with: 'In today’s presentation, we will explore' or a similar natural introduction."
+            if slide_index == 0 else
+            "Do not repeat introductions. Focus directly on the content of this slide."
         )
 
+        prompt = f"""
+        You are a skilled public speaker presenting a slide in a {language} professional presentation.
+        Your goal is to sound confident, {voice_tone.lower()}, and insightful — like a human delivering a clear and concise talk.
+
+        {intro_line}
+
+        Instructions:
+        - Rephrase and expand on the current slide content naturally (do not read it verbatim).
+        - Highlight key ideas and transitions logically.
+        - Keep it between 3–5 well-structured sentences.
+        - Do NOT use generic greetings like 'Ladies and gentlemen' or 'Welcome to the presentation'.
+
+        Current Slide Content:
+        \"\"\"{current_slide['text']}\"\"\"
+        """
 
         if previous_slides:
             prompt += f"The previous slides covered (in {language}):\n"
@@ -205,34 +225,43 @@ async def generate_speech(request: Request):
         prompt += (
             f"Now, generate **a short, clear, and engaging speech** ONLY for **Slide {slide_index+1}** in **{language}**:\n"
             f"{current_slide['text']}\n\n"
-            "Keep the response concise (**3-5 sentences**), avoiding repetition of prior slides."
+            "Keep the response concise (**3–5 sentences**), avoiding repetition of prior slides."
         )
 
-        response = requests.post(
-            "http://localhost:11434/api/generate",
-            json={
-                "model": "mistral",
-                "prompt": prompt,
-                "stream": False,
-                "max_tokens": 150
-            }
-        )
+        # ✅ Groq API setup
+        GROQ_API_KEY = "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"
+        headers = {
+            "Authorization": f"Bearer {GROQ_API_KEY}",
+            "Content-Type": "application/json"
+        }
 
-        if response.status_code != 200:
-            return {"error": f"Ollama API Error: {response.text}"}
+        payload = {
+            "model": "meta-llama/llama-4-scout-17b-16e-instruct",
+            "messages": [
+                {"role": "system", "content": "You are a helpful assistant that generates concise slide narration."},
+                {"role": "user", "content": prompt}
+            ],
+            "temperature": 0.4,
+            "max_tokens": 250
+        }
+
+        response = requests.post("https://api.groq.com/openai/v1/chat/completions", headers=headers, json=payload)
+        response.raise_for_status()
 
         data = response.json()
-        generated_speech = data.get("response", "").strip()
+        speech = data.get("choices", [{}])[0].get("message", {}).get("content", "").strip()
 
-        if not generated_speech:
-            return {"error": "Empty response from Mistral"}
+        if not speech:
+            return {"error": "Groq returned empty speech", "raw": data}
 
-        return {"speech": generated_speech}
+        return {"speech": speech, "language": language, "style": voice_tone}
 
-    except requests.exceptions.ConnectionError:
-        return {"error": "Failed to connect to Ollama. Ensure it's running."}
+    except requests.exceptions.RequestException as e:
+        return {"error": f"Groq connection error: {str(e)}"}
 
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         return {"error": f"Unexpected error: {str(e)}"}
 
 @app.get("/uploads/slides/{path:path}")
@@ -466,34 +495,56 @@ class QARequest(BaseModel):
     question: str
 
 @app.post("/ask")
+
 async def ask_question(data: QARequest):
+    print("🔥 /ask endpoint called with:", data.question)
+
     prompt = (
         f"You are an AI assistant for live presentations. "
-        f"Answer audience questions using only the information from the current slide, avoiding speculation or generic introductions.\n\n"
+        f"Answer audience questions avoiding speculation or generic introductions.\n\n"
         f"---\n"
         f"Slide:\n\"{data.slide_text}\"\n"
         f"---\n"
         f"Question:\n\"{data.question}\"\n\n"
-        f"Respond briefly and professionally (2–3 sentences max), in the same language as the slide content. "
+        f"Respond briefly and professionally (1–2 sentences max), in the same language as the slide content. "
         f"Do not say 'Ladies and gentlemen' or repeat the slide title. Stay focused only on the question context."
     )
 
-    try:
-        response = requests.post(
-            "http://localhost:11434/api/generate",
-            json={
-                "model": "mistral",
-                "prompt": prompt,
-                "stream": False,
-                "max_tokens": 200
-            }
-        )
-        response.raise_for_status()
-        answer = response.json().get("response", "").strip()
-        return {"answer": answer}
-    except Exception as e:
-        return {"error": f"Failed to get answer: {str(e)}"}
+    GROQ_API_KEY = "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"
 
+    try:
+        headers = {
+            "Authorization": f"Bearer {GROQ_API_KEY}",
+            "Content-Type": "application/json"
+        }
+
+        body = {
+            "model": "meta-llama/llama-4-scout-17b-16e-instruct",  # ✅ this matches Groq's expected model slug
+            "messages": [
+                {"role": "system", "content": "You are a helpful assistant for live slide presentations."},
+                {"role": "user", "content": prompt}
+            ],
+            "temperature": 0.2,
+            "max_tokens": 200
+        }
+        res = requests.post("https://api.groq.com/openai/v1/chat/completions", headers=headers, json=body) 
+        res.raise_for_status()
+
+        data = res.json()
+        print("✅ Groq response:", data)  # DEBUG OUTPUT
+
+        answer = data.get("choices", [{}])[0].get("message", {}).get("content", "").strip()
+
+        if not answer:
+             print("⚠️ Empty or missing content")
+             return {"error": "Groq returned no content", "raw": data}
+        print("✅ Groq response:", answer)
+        return {"answer": answer}
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return {"error": f"Failed to get Groq answer: {str(e)}"}
 
 @app.get("/")
 def root():

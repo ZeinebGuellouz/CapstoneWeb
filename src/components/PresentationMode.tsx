@@ -107,20 +107,34 @@ export default function PresentationMode({
       lottieRef.current.stop(); // or .pause() if smoother
     }
   }, [isSpeaking, isPaused]);
+
+  
   
 
   const speakAnswer = (answer: string, callback?: () => void) => {
+    const loadedVoices = window.speechSynthesis.getVoices();
+    const finalVoices = voices.length ? voices : loadedVoices;
+    const matchedVoice = finalVoices.find((v) => v.name === selectedVoice);
+  
+    console.log("🗣 Speaking with voice:", matchedVoice?.name || "default", "| Answer:", answer);
+  
     const utterance = new SpeechSynthesisUtterance(answer);
     utterance.pitch = pitch;
     utterance.rate = speed;
   
-    const matchedVoice = voices.find((v) => v.name === selectedVoice);
     if (matchedVoice) utterance.voice = matchedVoice;
   
     utterance.onend = () => {
+      console.log("✅ Finished speaking answer.");
       if (callback) callback();
     };
   
+    utterance.onerror = (e) => {
+      console.error("❌ Error during answer speech:", e.error);
+      if (callback) callback(); // fallback resume
+    };
+  
+    synthRef.current.cancel(); // 🛑 kill previous speech
     synthRef.current.speak(utterance);
   };
   
@@ -148,11 +162,21 @@ export default function PresentationMode({
       if (data.answer) {
         setAnswer(data.answer);
         setQaHistory((prev) => [...prev, { question: userQuestion, answer: data.answer }]);
-        speakAnswer(data.answer, () => resume());
+      
+        const waitAndSpeak = () => {
+          if (!voicesReady) {
+            console.log("🕐 Voices not ready yet, retrying...");
+            setTimeout(waitAndSpeak, 200);
+            return;
+          }
+          speakAnswer(data.answer, () => resume());
+        };
+      
+        waitAndSpeak();
       } else {
         resume();
       }
-  
+      
     } catch (err) {
       console.error("❌ Failed to get answer:", err);
       resume();
