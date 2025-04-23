@@ -27,6 +27,7 @@ export interface Slide {
   image: string;
   text: string;
   title: string;
+  transition?: string;
   presentationId: string; // ✅ Add this property
   slideNumber: number; // ✅ Add this property
   avatar?: string;

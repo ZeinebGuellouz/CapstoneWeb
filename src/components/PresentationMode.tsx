@@ -12,6 +12,8 @@ interface Props {
   pitch: number;
   toggleFullScreen: () => void;
   selectedVoice: string;
+  transition: string; // ✅ add this line
+
 }
 
 export default function PresentationMode({
@@ -23,6 +25,7 @@ export default function PresentationMode({
   pitch,
   toggleFullScreen,
   selectedVoice,
+  transition,
 }: Props) {
   const synthRef = useRef(window.speechSynthesis);
   const currentUtteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
@@ -462,14 +465,27 @@ export default function PresentationMode({
       
       <div className="relative w-full h-full flex items-center justify-center z-10">
         {currentSlide && (
-          <div className="w-full h-full flex items-center justify-center relative">
+            <div className="w-full h-full flex items-center justify-center relative">
             <img
+              key={currentSlide.slideNumber} // helps with re-render
               src={currentSlide.image}
               alt={currentSlide.title}
-              className="w-full h-full object-contain m-0 p-0 transition-opacity duration-300 ease-in-out"
+              className={`w-full h-full object-contain m-0 p-0 transition-all duration-500 ease-in-out ${
+                transition === "fade"
+                ? "animate-fade-in"
+                : transition === "slide"
+                ? "animate-slide-in"
+                : transition === "scale"
+                ? "animate-scale-in"
+                : transition === "zoom-in"
+                ? "animate-zoom-in"
+                : transition === "zoom-out"
+                ? "animate-zoom-out"
+                : ""
+              }`}
             />
             <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-80 pointer-events-none"></div>
-          </div>
+            </div>
         )}
       </div>
       
@@ -631,11 +647,11 @@ export default function PresentationMode({
         <div className="flex justify-between items-center mb-4">
           <h3 className="text-lg font-semibold text-white flex items-center gap-2">
             <div className="w-1.5 h-6 bg-gradient-to-b from-[#1EAEDB] to-[#9b87f5] rounded-full mr-1"></div>
-            Ask About This Slide
+            Ask A Question
           </h3>
           <button
             onClick={() => {
-              setShowQAInput(false);
+              setShowQAInput(false);  
               setAnswer("");
               resume();
             }}

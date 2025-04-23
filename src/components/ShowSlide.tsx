@@ -24,6 +24,7 @@
       const [speed, setSpeed] = useState(1);
       const [pitch, setPitch] = useState(1);
       const [selectedVoice, setSelectedVoice] = useState("");
+      const [transition, setTransition] = useState("fade");
 
 
       useEffect(() => {
@@ -104,6 +105,7 @@
             pitch={pitch}
             toggleFullScreen={toggleFullScreen}
             selectedVoice={selectedVoice}
+            transition={transition}
           />
         );
       }
@@ -196,6 +198,8 @@
                   setCurrentSlideIndex={setCurrentSlideIndex}
                   selectedVoice={selectedVoice}
                   setSelectedVoice={setSelectedVoice}
+                  transition={transition}
+                  setTransition={setTransition}
                 />
               )}
             </div>
