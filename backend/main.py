@@ -18,6 +18,9 @@ import firebase_admin
 from firebase_admin import credentials, auth, firestore
 from fastapi import Header , Query
 from langdetect import detect
+from langid import classify 
+from uuid import uuid4
+
 
 
 
@@ -173,6 +176,8 @@ class SpeechRequest(BaseModel):
     voice_tone: str = "Formal"
     speed: float = 1.0
     pitch: float = 1.0
+    transition: str | None = None  # ✅ Add this line
+
 
 # ========== API to Generate Speech ==========
 @app.post("/generate_speech/")
@@ -308,6 +313,7 @@ async def save_speech(request: Request, authorization: str = Header(...)):
         "voice_tone": body.get("voice_tone", "Formal"),
         "voice": body.get("voice"),  # ✅ add this line
         "text": body.get("text"),  # optional if user edited it
+        "transition": body.get("transition"),  # ✅ Add this line
         "lastModifiedAt": firestore.SERVER_TIMESTAMP
     }
 
@@ -344,7 +350,7 @@ async def upload_file(
         shutil.copyfileobj(file.file, buffer)
 
     # ✅ Generate unique ID after file is saved (to get correct mtime)
-    presentation_id = f"{int(file_path.stat().st_mtime * 1000)}_{file.filename.replace(' ', '_')}"
+    presentation_id = f"{uuid4().hex}_{file.filename.replace(' ', '_')}"
 
     # ✅ Clear/create a fresh directory for this presentation
     slide_dir = clear_slide_directory(user_id, presentation_id)
@@ -545,7 +551,7 @@ async def ask_question(data: QARequest):
         import traceback
         traceback.print_exc()
         return {"error": f"Failed to get Groq answer: {str(e)}"}
-
+    
 @app.get("/")
 def root():
     return {"message": "Backend is running!"}

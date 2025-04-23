@@ -544,28 +544,7 @@ export default function PresentationMode({
       </div>
       
       <div className={`absolute inset-0 pointer-events-none transition-opacity duration-500 ${showControls ? 'opacity-100' : 'opacity-0'} z-20`}>
-        <button
-          onClick={(e) => {
-            e.stopPropagation();
-            if (!isListening) {
-              recognition.current?.start();
-              setIsListening(true);
-              pause(); // optional
-            } else {
-              recognition.current?.stop();
-              setIsListening(false);
-            }
-          }}
-          className={`p-3 rounded-full transition-all duration-300 hover:scale-105 relative group ${isListening ? 'bg-red-600/30' : 'bg-[#1EAEDB]/10'}`}
-        >
-          {isListening ? (
-            <MicOff className="w-5 h-5 text-red-400 group-hover:text-white" />
-          ) : (
-            <Mic className="w-5 h-5 text-[#1EAEDB] group-hover:text-white" />
-          )}
-          <div className="absolute inset-0 border border-transparent group-hover:border-white/30 rounded-full transition-all duration-300"></div>
-        </button>
-        
+      
 
         <button
           onClick={(e) => { e.stopPropagation(); goNext(); }}

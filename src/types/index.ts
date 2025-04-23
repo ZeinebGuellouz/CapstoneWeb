@@ -40,4 +40,3 @@ export type Feature = {
   description: string;
   icon: React.ElementType<LucideProps>; // ✅ Ensure proper typing
 };
-

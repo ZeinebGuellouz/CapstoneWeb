@@ -1,3 +1,4 @@
+
 import { useState, useEffect, useRef } from "react";
   import { auth, db } from "@/components/firebase/firebaseConfig";
   import { doc, getDoc } from "firebase/firestore";
@@ -93,6 +94,8 @@ import { useState, useEffect, useRef } from "react";
           if (data.voice && availableVoices.find(v => v.name === data.voice)) {
             setSelectedVoice(data.voice);
           }
+        setTransition?.(data.transition ?? "none"); // ✅ <-- ADD THIS LINE
+
         } catch (error) {
           console.error("❌ Error fetching speech settings from Firestore:", error);
         } finally {
@@ -238,6 +241,7 @@ import { useState, useEffect, useRef } from "react";
           pitch,
           voice: selectedVoice,
           text: slide.text,
+          transition, 
         };
 
         const response = await fetch("http://127.0.0.1:8000/save_speech", {
