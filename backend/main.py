@@ -25,6 +25,8 @@ from uuid import uuid4
 
 
 
+
+
 # ========== FASTAPI SETUP ==========
 app = FastAPI()
 
@@ -499,59 +501,64 @@ async def delete_presentations_batch(
 class QARequest(BaseModel):
     slide_text: str
     question: str
+lang_map = {
+    "en": "English",
+    "fr": "French",
+    "de": "German",
+    "es": "Spanish",
+}
+def detect_language(text: str) -> str:
+    # 1. Try langid and get confidence
+    lang_code, conf = classify(text)
+    # If it’s confident (>90%) and we know the code, keep it
+    if conf > 0.90 and lang_code in lang_map:
+        return lang_code
+
+    # 2. Otherwise, fall back to langdetect
+    try:
+        lang_code = detect(text)
+    except:
+        lang_code = "en"
+    return lang_code
 
 @app.post("/ask")
-
 async def ask_question(data: QARequest):
-    print("🔥 /ask endpoint called with:", data.question)
+    # --- determine language code ---
+    lang_code = detect_language(data.question)
+    language = lang_map.get(lang_code, "the same language as the question")
 
-    prompt = (
-        f"You are an AI assistant for live presentations. "
-        f"Answer audience questions avoiding speculation or generic introductions.\n\n"
-        f"---\n"
-        f"Slide:\n\"{data.slide_text}\"\n"
-        f"---\n"
-        f"Question:\n\"{data.question}\"\n\n"
-        f"Respond briefly and professionally (1–2 sentences max), in the same language as the slide content. "
-        f"Do not say 'Ladies and gentlemen' or repeat the slide title. Stay focused only on the question context."
+    # --- prompt construction ---
+    system_msg = (
+        f"You are a helpful AI assistant for live presentations. "
+        f"Always answer in {language}. Never translate or switch to another language."
+    )
+    user_msg = (
+        f"Slide context:\n\"{data.slide_text}\"\n\n"
+        f"Audience question:\n\"{data.question}\"\n\n"
+        f"Please answer briefly and professionally in {language}, "
+        "avoiding generic intros or repeating the slide title."
     )
 
+    # --- Groq API key ---
     GROQ_API_KEY = "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"
 
-    try:
-        headers = {
-            "Authorization": f"Bearer {GROQ_API_KEY}",
-            "Content-Type": "application/json"
-        }
-
-        body = {
-            "model": "meta-llama/llama-4-scout-17b-16e-instruct",  # ✅ this matches Groq's expected model slug
+    # --- call Groq ---
+    response = requests.post(
+        "https://api.groq.com/openai/v1/chat/completions",
+        headers={"Authorization": f"Bearer {GROQ_API_KEY}", "Content-Type": "application/json"},
+        json={
+            "model": "meta-llama/llama-4-scout-17b-16e-instruct",
             "messages": [
-                {"role": "system", "content": "You are a helpful assistant for live slide presentations."},
-                {"role": "user", "content": prompt}
+                {"role": "system", "content": system_msg},
+                {"role": "user",   "content": user_msg}
             ],
             "temperature": 0.2,
             "max_tokens": 200
         }
-        res = requests.post("https://api.groq.com/openai/v1/chat/completions", headers=headers, json=body) 
-        res.raise_for_status()
-
-        data = res.json()
-        print("✅ Groq response:", data)  # DEBUG OUTPUT
-
-        answer = data.get("choices", [{}])[0].get("message", {}).get("content", "").strip()
-
-        if not answer:
-             print("⚠️ Empty or missing content")
-             return {"error": "Groq returned no content", "raw": data}
-        print("✅ Groq response:", answer)
-        return {"answer": answer}
-
-    except Exception as e:
-        import traceback
-        traceback.print_exc()
-        return {"error": f"Failed to get Groq answer: {str(e)}"}
-    
+    )
+    response.raise_for_status()
+    answer = response.json()["choices"][0]["message"]["content"].strip()
+    return {"answer": answer}
 @app.get("/")
 def root():
     return {"message": "Backend is running!"}
