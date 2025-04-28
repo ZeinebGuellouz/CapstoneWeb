@@ -89,11 +89,19 @@ export function ShowSlide() {
     document.addEventListener("fullscreenchange", handleFullscreenChange);
     return () => document.removeEventListener("fullscreenchange", handleFullscreenChange);
   }, []);
-  
+  useEffect(() => {
+    if (isFullScreen) {
+      document.body.style.overflow = "hidden";
+      document.body.style.margin = "0";
+    } else {
+      // revert to whatever you had before (usually auto)
+      document.body.style.overflow = "";
+      document.body.style.margin = "";
+    }
+  }, [isFullScreen]);
 
   if (isFullScreen && slides.length > 0) {
-    document.body.style.margin = "0";
-    document.body.style.overflow = "hidden";
+   
     return (
       <PresentationMode
         slides={slides}
