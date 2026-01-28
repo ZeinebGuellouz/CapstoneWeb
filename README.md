@@ -32,9 +32,3 @@ Capstone Supervisor : Mohamed Aziz Yacoubi
 
 Actively under development. The system is being tested for demo deployment and real-time interaction scenarios.
 
-## 📄 License
-
-
-This project is **not open source** and may not be used, shared, or modified without explicit permission from the author.
-
-For any collaboration or demo access, contact [zeineb.guellouz@medtech.tn](mailto:zeineb.guellouz@medtech.tn).
